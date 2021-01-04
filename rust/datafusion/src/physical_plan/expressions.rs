@@ -56,13 +56,15 @@ use arrow::{
 };
 use compute::can_cast_types;
 
+use serde::{Deserialize, Serialize};
+
 /// returns the name of the state
 pub fn format_state_name(name: &str, state_name: &str) -> String {
     format!("{}[{}]", name, state_name)
 }
 
 /// Represents the column at a given index in a RecordBatch
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Column {
     name: String,
 }
@@ -82,6 +84,7 @@ impl fmt::Display for Column {
     }
 }
 
+#[typetag::serde(name = "column")]
 impl PhysicalExpr for Column {
     /// Get the data type of this expression, given the schema of the input
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
@@ -110,7 +113,7 @@ pub fn col(name: &str) -> Arc<dyn PhysicalExpr> {
 }
 
 /// SUM aggregate expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Sum {
     name: String,
     data_type: DataType,
@@ -148,6 +151,7 @@ impl Sum {
     }
 }
 
+#[typetag::serde(name = "sum")]
 impl AggregateExpr for Sum {
     fn field(&self) -> Result<Field> {
         Ok(Field::new(
@@ -336,7 +340,7 @@ impl Accumulator for SumAccumulator {
 }
 
 /// AVG aggregate expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Avg {
     name: String,
     data_type: DataType,
@@ -376,6 +380,7 @@ impl Avg {
     }
 }
 
+#[typetag::serde(name = "avg")]
 impl AggregateExpr for Avg {
     fn field(&self) -> Result<Field> {
         Ok(Field::new(&self.name, DataType::Float64, true))
@@ -484,7 +489,7 @@ impl Accumulator for AvgAccumulator {
 }
 
 /// MAX aggregate expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Max {
     name: String,
     data_type: DataType,
@@ -504,6 +509,7 @@ impl Max {
     }
 }
 
+#[typetag::serde(name = "max")]
 impl AggregateExpr for Max {
     fn field(&self) -> Result<Field> {
         Ok(Field::new(
@@ -736,7 +742,7 @@ impl Accumulator for MaxAccumulator {
 }
 
 /// MIN aggregate expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Min {
     name: String,
     data_type: DataType,
@@ -756,6 +762,7 @@ impl Min {
     }
 }
 
+#[typetag::serde(name = "min")]
 impl AggregateExpr for Min {
     fn field(&self) -> Result<Field> {
         Ok(Field::new(
@@ -829,7 +836,7 @@ impl Accumulator for MinAccumulator {
 
 /// COUNT aggregate expression
 /// Returns the amount of non-null values of the given expression.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Count {
     name: String,
     data_type: DataType,
@@ -849,6 +856,7 @@ impl Count {
     }
 }
 
+#[typetag::serde(name = "count")]
 impl AggregateExpr for Count {
     fn field(&self) -> Result<Field> {
         Ok(Field::new(
@@ -1135,7 +1143,7 @@ macro_rules! boolean_op {
     }};
 }
 /// Binary expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BinaryExpr {
     left: Arc<dyn PhysicalExpr>,
     op: Operator,
@@ -1395,6 +1403,7 @@ fn binary_cast(
     ))
 }
 
+#[typetag::serde(name = "binary_expr")]
 impl PhysicalExpr for BinaryExpr {
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         binary_operator_data_type(
@@ -1610,7 +1619,7 @@ pub static SUPPORTED_NULLIF_TYPES: &[DataType] = &[
 ];
 
 /// Not expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NotExpr {
     arg: Arc<dyn PhysicalExpr>,
 }
@@ -1628,6 +1637,7 @@ impl fmt::Display for NotExpr {
     }
 }
 
+#[typetag::serde(name = "not_expr")]
 impl PhysicalExpr for NotExpr {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
@@ -1686,7 +1696,7 @@ pub fn not(
 }
 
 /// Negative expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NegativeExpr {
     arg: Arc<dyn PhysicalExpr>,
 }
@@ -1704,6 +1714,7 @@ impl fmt::Display for NegativeExpr {
     }
 }
 
+#[typetag::serde(name = "negative_expr")]
 impl PhysicalExpr for NegativeExpr {
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         self.arg.data_type(input_schema)
@@ -1762,7 +1773,7 @@ pub fn negative(
 }
 
 /// IS NULL expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IsNullExpr {
     arg: Arc<dyn PhysicalExpr>,
 }
@@ -1779,6 +1790,8 @@ impl fmt::Display for IsNullExpr {
         write!(f, "{} IS NULL", self.arg)
     }
 }
+
+#[typetag::serde(name = "is_null_expr")]
 impl PhysicalExpr for IsNullExpr {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
@@ -1807,7 +1820,7 @@ pub fn is_null(arg: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExpr>> {
 }
 
 /// IS NULL expression
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IsNotNullExpr {
     arg: Arc<dyn PhysicalExpr>,
 }
@@ -1824,6 +1837,8 @@ impl fmt::Display for IsNotNullExpr {
         write!(f, "{} IS NOT NULL", self.arg)
     }
 }
+
+#[typetag::serde(name = "is_not_null_expr")]
 impl PhysicalExpr for IsNotNullExpr {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
@@ -1868,7 +1883,7 @@ pub fn is_not_null(arg: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExpr>> 
 ///     [WHEN ...]
 ///     [ELSE result]
 /// END
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CaseExpr {
     /// Optional base expression that can be compared to literal values in the "when" expressions
     expr: Option<Arc<dyn PhysicalExpr>>,
@@ -2225,6 +2240,7 @@ impl CaseExpr {
     }
 }
 
+#[typetag::serde(name = "case_expr")]
 impl PhysicalExpr for CaseExpr {
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         self.when_then_expr[0].1.data_type(input_schema)
@@ -2260,7 +2276,7 @@ impl PhysicalExpr for CaseExpr {
 }
 
 /// CAST expression casts an expression to a specific data type
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CastExpr {
     /// The expression to cast
     expr: Arc<dyn PhysicalExpr>,
@@ -2299,6 +2315,7 @@ impl fmt::Display for CastExpr {
     }
 }
 
+#[typetag::serde(name = "cast_expr")]
 impl PhysicalExpr for CastExpr {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.cast_type.clone())
@@ -2348,7 +2365,7 @@ pub fn cast(
 }
 
 /// Represents a non-null literal value
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Literal {
     value: ScalarValue,
 }
@@ -2366,6 +2383,7 @@ impl fmt::Display for Literal {
     }
 }
 
+#[typetag::serde(name = "literal")]
 impl PhysicalExpr for Literal {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.value.get_datatype())
@@ -2386,7 +2404,7 @@ pub fn lit(value: ScalarValue) -> Arc<dyn PhysicalExpr> {
 }
 
 /// Represents Sort operation for a column in a RecordBatch
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PhysicalSortExpr {
     /// Physical expression representing the column to sort
     pub expr: Arc<dyn PhysicalExpr>,

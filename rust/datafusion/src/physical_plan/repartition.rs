@@ -38,11 +38,13 @@ use futures::StreamExt;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use serde::{Deserialize, Serialize};
+
 type MaybeBatch = Option<ArrowResult<RecordBatch>>;
 
 /// The repartition operator maps N input partitions to M output partitions based on a
 /// partitioning scheme. No guarantees are made about the order of the resulting partitions.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RepartitionExec {
     /// Input execution plan
     input: Arc<dyn ExecutionPlan>,
@@ -50,10 +52,12 @@ pub struct RepartitionExec {
     partitioning: Partitioning,
     /// Channels for sending batches from input partitions to output partitions
     /// there is one entry in this Vec for each output partition
+    #[serde(skip)]
     channels: Arc<Mutex<Vec<(Sender<MaybeBatch>, Receiver<MaybeBatch>)>>>,
 }
 
 #[async_trait]
+#[typetag::serde(name = "repartition_exec")]
 impl ExecutionPlan for RepartitionExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

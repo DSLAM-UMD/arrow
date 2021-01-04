@@ -42,9 +42,11 @@ use crate::physical_plan::Partitioning;
 use super::SendableRecordBatchStream;
 use pin_project_lite::pin_project;
 
+use serde::{Deserialize, Serialize};
+
 /// Merge execution plan executes partitions in parallel and combines them into a single
 /// partition. No guarantees are made about the order of the resulting partition.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MergeExec {
     /// Input execution plan
     input: Arc<dyn ExecutionPlan>,
@@ -58,6 +60,7 @@ impl MergeExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "merge_exec")]
 impl ExecutionPlan for MergeExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

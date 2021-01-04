@@ -25,9 +25,11 @@ use crate::error::Result;
 use crate::logical_plan::Expr;
 use crate::physical_plan::ExecutionPlan;
 
+use serde::{Deserialize, Serialize};
+
 /// This table statistics are estimates.
 /// It can not be used directly in the precise compute
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Statistics {
     /// The number of table rows
     pub num_rows: Option<usize>,
@@ -37,7 +39,7 @@ pub struct Statistics {
     pub column_statistics: Option<Vec<ColumnStatistics>>,
 }
 /// This table statistics are estimates about column
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColumnStatistics {
     /// Number of null values on column
     pub null_count: Option<usize>,

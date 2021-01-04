@@ -35,6 +35,8 @@ use futures::Stream;
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// CSV file read option
 #[derive(Copy, Clone)]
 pub struct CsvReadOptions<'a> {
@@ -107,7 +109,7 @@ impl<'a> CsvReadOptions<'a> {
 }
 
 /// Execution plan for scanning a CSV file
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CsvExec {
     /// Path to directory containing partitioned CSV files with the same schema
     path: String,
@@ -183,6 +185,7 @@ impl CsvExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "csv_exec")]
 impl ExecutionPlan for CsvExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

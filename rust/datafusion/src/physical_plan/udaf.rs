@@ -37,10 +37,11 @@ use super::{
     Accumulator, AggregateExpr,
 };
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 /// Logical representation of a user-defined aggregate function (UDAF)
 /// A UDAF is different from a UDF in that it is stateful across batches.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AggregateUDF {
     /// name
     pub name: String,
@@ -123,7 +124,7 @@ pub fn create_aggregate_expr(
 }
 
 /// Physical aggregate expression of a UDAF.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AggregateFunctionExpr {
     fun: AggregateUDF,
     args: Vec<Arc<dyn PhysicalExpr>>,
@@ -131,6 +132,7 @@ pub struct AggregateFunctionExpr {
     name: String,
 }
 
+#[typetag::serde(name = "agg_func_expr")]
 impl AggregateExpr for AggregateFunctionExpr {
     fn expressions(&self) -> Vec<Arc<dyn PhysicalExpr>> {
         self.args.clone()

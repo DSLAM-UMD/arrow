@@ -25,6 +25,8 @@ use std::{
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 
+use serde::{Deserialize, Serialize};
+
 use crate::datasource::TableProvider;
 use crate::sql::parser::FileType;
 
@@ -585,7 +587,7 @@ impl fmt::Debug for LogicalPlan {
 }
 
 /// Represents which type of plan
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlanType {
     /// The initial LogicalPlan provided to DataFusion
     LogicalPlan,
@@ -611,7 +613,7 @@ impl From<&PlanType> for String {
 }
 
 /// Represents some sort of execution plan, in String form
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::rc_buffer)]
 pub struct StringifiedPlan {
     /// An identifier of what type of plan this string represents

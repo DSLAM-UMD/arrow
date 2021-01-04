@@ -37,8 +37,10 @@ use super::{RecordBatchStream, SendableRecordBatchStream};
 
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// Limit execution plan
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GlobalLimitExec {
     /// Input execution plan
     input: Arc<dyn ExecutionPlan>,
@@ -60,6 +62,7 @@ impl GlobalLimitExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "global_limit_exec")]
 impl ExecutionPlan for GlobalLimitExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
@@ -121,7 +124,7 @@ impl ExecutionPlan for GlobalLimitExec {
 }
 
 /// LocalLimitExec applies a limit to a single partition
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LocalLimitExec {
     input: Arc<dyn ExecutionPlan>,
     limit: usize,
@@ -135,6 +138,7 @@ impl LocalLimitExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "local_limit_exec")]
 impl ExecutionPlan for LocalLimitExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
