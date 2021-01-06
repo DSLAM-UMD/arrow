@@ -32,7 +32,7 @@ use crate::record_batch::{RecordBatch, RecordBatchReader};
 pub struct ArrowJson {
     pub schema: ArrowJsonSchema,
     pub batches: Vec<ArrowJsonBatch>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(skip_serializing_if = "Option::is_none")]
     pub dictionaries: Option<Vec<ArrowJsonDictionaryBatch>>,
 }
 
@@ -52,9 +52,9 @@ pub struct ArrowJsonField {
     pub field_type: Value,
     pub nullable: bool,
     pub children: Vec<ArrowJsonField>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(skip_serializing_if = "Option::is_none")]
     pub dictionary: Option<ArrowJsonFieldDictionary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
 }
 

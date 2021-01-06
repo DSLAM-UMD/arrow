@@ -41,7 +41,7 @@ pub struct MemoryExec {
     /// Schema representing the data after the optional projection is applied
     schema: SchemaRef,
     /// Optional projection
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[serde(skip_serializing_if = "Option::is_none")]
     projection: Option<Vec<usize>>,
 }
 
