@@ -51,6 +51,8 @@ use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchS
 use ahash::RandomState;
 use log::debug;
 
+use serde::{Deserialize, Serialize};
+
 // An index of (batch, row) uniquely identifying a row in a part.
 type Index = (usize, usize);
 // A pair (left index, right index)
@@ -68,7 +70,7 @@ type JoinLeftData = Arc<(JoinHashMap, Vec<RecordBatch>)>;
 
 /// join execution plan executes partitions in parallel and combines them into a set of
 /// partitions.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct HashJoinExec {
     /// left (build) side which gets hashed
     left: Arc<dyn ExecutionPlan>,
@@ -81,6 +83,7 @@ pub struct HashJoinExec {
     /// The schema once the join is applied
     schema: SchemaRef,
     /// Build-side
+    #[serde(skip)]
     build_side: Arc<Mutex<Option<JoinLeftData>>>,
 }
 
@@ -122,6 +125,7 @@ impl HashJoinExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "hash_join_exec")]
 impl ExecutionPlan for HashJoinExec {
     fn as_any(&self) -> &dyn Any {
         self

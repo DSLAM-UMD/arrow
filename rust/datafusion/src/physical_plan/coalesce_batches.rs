@@ -36,9 +36,11 @@ use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
 use log::debug;
 
+use serde::{Deserialize, Serialize};
+
 /// CoalesceBatchesExec combines small batches into larger batches for more efficient use of
 /// vectorized processing by upstream operators.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CoalesceBatchesExec {
     /// The input plan
     input: Arc<dyn ExecutionPlan>,
@@ -57,6 +59,7 @@ impl CoalesceBatchesExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "coalesce_batches_exec")]
 impl ExecutionPlan for CoalesceBatchesExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

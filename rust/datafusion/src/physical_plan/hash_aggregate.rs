@@ -52,8 +52,10 @@ use hashbrown::HashMap;
 use arrow::array::{TimestampMicrosecondArray, TimestampNanosecondArray};
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// Hash aggregate modes
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum AggregateMode {
     /// Partial aggregate that can be applied in parallel across input partitions
     Partial,
@@ -62,7 +64,7 @@ pub enum AggregateMode {
 }
 
 /// Hash aggregate execution plan
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct HashAggregateExec {
     mode: AggregateMode,
     group_expr: Vec<(Arc<dyn PhysicalExpr>, String)>,
@@ -127,6 +129,7 @@ impl HashAggregateExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "hash_aggregate_exec")]
 impl ExecutionPlan for HashAggregateExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

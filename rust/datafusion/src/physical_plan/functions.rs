@@ -35,13 +35,13 @@ use super::{
 };
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::array_expressions;
-use crate::physical_plan::datetime_expressions;
-use crate::physical_plan::expressions::{nullif_func, SUPPORTED_NULLIF_TYPES};
+use crate::physical_plan::expressions::{
+    nullif_func, length_func, concat_func, to_timestamp_func, date_trunc_func,
+    array_func, lower_func, trim_func, upper_func, SUPPORTED_NULLIF_TYPES
+};
 use crate::physical_plan::math_expressions;
-use crate::physical_plan::string_expressions;
 use arrow::{
     array::ArrayRef,
-    compute::kernels::length::length,
     datatypes::TimeUnit,
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
@@ -49,8 +49,10 @@ use arrow::{
 use fmt::{Debug, Formatter};
 use std::{fmt, str::FromStr, sync::Arc};
 
+use serde::{Deserialize, Serialize};
+
 /// A function's signature, which defines the function's supported argument types.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Signature {
     /// arbitrary number of arguments of an common type out of a list of valid types
     // A function such as `concat` is `Variadic(vec![DataType::Utf8, DataType::LargeUtf8])`
@@ -78,7 +80,7 @@ pub type ReturnTypeFunction =
     Arc<dyn Fn(&[DataType]) -> Result<Arc<DataType>> + Send + Sync>;
 
 /// Enum of all built-in scalar functions
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuiltinScalarFunction {
     /// sqrt
     Sqrt,
@@ -132,6 +134,39 @@ pub enum BuiltinScalarFunction {
     NullIf,
     /// Date truncate
     DateTrunc,
+}
+
+impl BuiltinScalarFunction {
+    fn to_func(&self) -> ScalarFunctionImplementation {
+        Arc::new(match self {
+            BuiltinScalarFunction::Sqrt => math_expressions::sqrt,
+            BuiltinScalarFunction::Sin => math_expressions::sin,
+            BuiltinScalarFunction::Cos => math_expressions::cos,
+            BuiltinScalarFunction::Tan => math_expressions::tan,
+            BuiltinScalarFunction::Asin => math_expressions::asin,
+            BuiltinScalarFunction::Acos => math_expressions::acos,
+            BuiltinScalarFunction::Atan => math_expressions::atan,
+            BuiltinScalarFunction::Exp => math_expressions::exp,
+            BuiltinScalarFunction::Log => math_expressions::ln,
+            BuiltinScalarFunction::Log2 => math_expressions::log2,
+            BuiltinScalarFunction::Log10 => math_expressions::log10,
+            BuiltinScalarFunction::Floor => math_expressions::floor,
+            BuiltinScalarFunction::Ceil => math_expressions::ceil,
+            BuiltinScalarFunction::Round => math_expressions::round,
+            BuiltinScalarFunction::Trunc => math_expressions::trunc,
+            BuiltinScalarFunction::Abs => math_expressions::abs,
+            BuiltinScalarFunction::Signum => math_expressions::signum,
+            BuiltinScalarFunction::NullIf => nullif_func,
+            BuiltinScalarFunction::Length => length_func,
+            BuiltinScalarFunction::Concat => concat_func,
+            BuiltinScalarFunction::Lower => lower_func,
+            BuiltinScalarFunction::Trim => trim_func,
+            BuiltinScalarFunction::Upper => upper_func,
+            BuiltinScalarFunction::ToTimestamp => to_timestamp_func,
+            BuiltinScalarFunction::DateTrunc => date_trunc_func,
+            BuiltinScalarFunction::Array => array_func,
+        })
+    }    
 }
 
 impl fmt::Display for BuiltinScalarFunction {
@@ -273,61 +308,6 @@ pub fn create_physical_expr(
     args: &Vec<Arc<dyn PhysicalExpr>>,
     input_schema: &Schema,
 ) -> Result<Arc<dyn PhysicalExpr>> {
-    let fun_expr: ScalarFunctionImplementation = Arc::new(match fun {
-        BuiltinScalarFunction::Sqrt => math_expressions::sqrt,
-        BuiltinScalarFunction::Sin => math_expressions::sin,
-        BuiltinScalarFunction::Cos => math_expressions::cos,
-        BuiltinScalarFunction::Tan => math_expressions::tan,
-        BuiltinScalarFunction::Asin => math_expressions::asin,
-        BuiltinScalarFunction::Acos => math_expressions::acos,
-        BuiltinScalarFunction::Atan => math_expressions::atan,
-        BuiltinScalarFunction::Exp => math_expressions::exp,
-        BuiltinScalarFunction::Log => math_expressions::ln,
-        BuiltinScalarFunction::Log2 => math_expressions::log2,
-        BuiltinScalarFunction::Log10 => math_expressions::log10,
-        BuiltinScalarFunction::Floor => math_expressions::floor,
-        BuiltinScalarFunction::Ceil => math_expressions::ceil,
-        BuiltinScalarFunction::Round => math_expressions::round,
-        BuiltinScalarFunction::Trunc => math_expressions::trunc,
-        BuiltinScalarFunction::Abs => math_expressions::abs,
-        BuiltinScalarFunction::Signum => math_expressions::signum,
-        BuiltinScalarFunction::NullIf => nullif_func,
-        BuiltinScalarFunction::Length => |args| Ok(length(args[0].as_ref())?),
-        BuiltinScalarFunction::Concat => {
-            |args| Ok(Arc::new(string_expressions::concatenate(args)?))
-        }
-        BuiltinScalarFunction::Lower => |args| match args[0].data_type() {
-            DataType::Utf8 => Ok(Arc::new(string_expressions::lower::<i32>(args)?)),
-            DataType::LargeUtf8 => Ok(Arc::new(string_expressions::lower::<i64>(args)?)),
-            other => Err(DataFusionError::Internal(format!(
-                "Unsupported data type {:?} for function lower",
-                other,
-            ))),
-        },
-        BuiltinScalarFunction::Trim => |args| match args[0].data_type() {
-            DataType::Utf8 => Ok(Arc::new(string_expressions::trim::<i32>(args)?)),
-            DataType::LargeUtf8 => Ok(Arc::new(string_expressions::trim::<i64>(args)?)),
-            other => Err(DataFusionError::Internal(format!(
-                "Unsupported data type {:?} for function trim",
-                other,
-            ))),
-        },
-        BuiltinScalarFunction::Upper => |args| match args[0].data_type() {
-            DataType::Utf8 => Ok(Arc::new(string_expressions::upper::<i32>(args)?)),
-            DataType::LargeUtf8 => Ok(Arc::new(string_expressions::upper::<i64>(args)?)),
-            other => Err(DataFusionError::Internal(format!(
-                "Unsupported data type {:?} for function upper",
-                other,
-            ))),
-        },
-        BuiltinScalarFunction::ToTimestamp => {
-            |args| Ok(Arc::new(datetime_expressions::to_timestamp(args)?))
-        }
-        BuiltinScalarFunction::DateTrunc => {
-            |args| Ok(Arc::new(datetime_expressions::date_trunc(args)?))
-        }
-        BuiltinScalarFunction::Array => |args| Ok(array_expressions::array(args)?),
-    });
     // coerce
     let args = coerce(args, input_schema, &signature(fun))?;
 
@@ -338,7 +318,7 @@ pub fn create_physical_expr(
 
     Ok(Arc::new(ScalarFunctionExpr::new(
         &format!("{}", fun),
-        fun_expr,
+        fun.clone(),
         args,
         &return_type(&fun, &arg_types)?,
     )))
@@ -384,8 +364,9 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
 }
 
 /// Physical expression of a scalar function
+#[derive(Serialize, Deserialize)]
 pub struct ScalarFunctionExpr {
-    fun: ScalarFunctionImplementation,
+    fun: BuiltinScalarFunction,
     name: String,
     args: Vec<Arc<dyn PhysicalExpr>>,
     return_type: DataType,
@@ -406,7 +387,7 @@ impl ScalarFunctionExpr {
     /// Create a new Scalar function
     pub fn new(
         name: &str,
-        fun: ScalarFunctionImplementation,
+        fun: BuiltinScalarFunction,
         args: Vec<Arc<dyn PhysicalExpr>>,
         return_type: &DataType,
     ) -> Self {
@@ -434,6 +415,7 @@ impl fmt::Display for ScalarFunctionExpr {
     }
 }
 
+#[typetag::serde(name = "scalar_function_expr")]
 impl PhysicalExpr for ScalarFunctionExpr {
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.return_type.clone())
@@ -452,7 +434,7 @@ impl PhysicalExpr for ScalarFunctionExpr {
             .collect::<Result<Vec<_>>>()?;
 
         // evaluate the function
-        let fun = self.fun.as_ref();
+        let fun = self.fun.to_func();
         (fun)(&inputs).map(|a| ColumnarValue::Array(a))
     }
 }

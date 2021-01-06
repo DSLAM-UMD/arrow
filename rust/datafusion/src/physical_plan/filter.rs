@@ -36,9 +36,11 @@ use async_trait::async_trait;
 
 use futures::stream::{Stream, StreamExt};
 
+use serde::{Deserialize, Serialize};
+
 /// FilterExec evaluates a boolean predicate against all input batches to determine which rows to
 /// include in its output batches.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FilterExec {
     /// The expression to filter on. This expression must evaluate to a boolean value.
     predicate: Arc<dyn PhysicalExpr>,
@@ -66,6 +68,7 @@ impl FilterExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "filter_exec")]
 impl ExecutionPlan for FilterExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

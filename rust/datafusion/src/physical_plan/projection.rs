@@ -37,8 +37,10 @@ use async_trait::async_trait;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 
+use serde::{Deserialize, Serialize};
+
 /// Execution plan for a projection
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectionExec {
     /// The projection expressions stored as tuples of (expression, output column name)
     expr: Vec<(Arc<dyn PhysicalExpr>, String)>,
@@ -78,6 +80,7 @@ impl ProjectionExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "projection_exec")]
 impl ExecutionPlan for ProjectionExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

@@ -39,9 +39,10 @@ use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
 use crate::datasource::datasource::Statistics;
 use async_trait::async_trait;
 use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
 
 /// Execution plan for scanning one or more Parquet partitions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParquetExec {
     /// Parquet partitions to read
     partitions: Vec<ParquetPartition>,
@@ -64,7 +65,7 @@ pub struct ParquetExec {
 /// We may also want to support reading Parquet files that are partitioned based on a key and
 /// in this case we would want this partition struct to represent multiple files for a given
 /// partition key (see https://issues.apache.org/jira/browse/ARROW-11019).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParquetPartition {
     /// The Parquet filename for this partition
     filenames: Vec<String>,
@@ -210,6 +211,7 @@ impl ParquetExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "parquet_exec")]
 impl ExecutionPlan for ParquetExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

@@ -31,8 +31,10 @@ use super::SendableRecordBatchStream;
 
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// Execution plan for empty relation (produces no rows)
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EmptyExec {
     produce_one_row: bool,
     schema: SchemaRef,
@@ -49,6 +51,7 @@ impl EmptyExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "empty_exec")]
 impl ExecutionPlan for EmptyExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

@@ -41,8 +41,10 @@ use crate::physical_plan::{common, Distribution, ExecutionPlan, Partitioning};
 
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// Sort execution plan
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SortExec {
     /// Input schema
     input: Arc<dyn ExecutionPlan>,
@@ -68,6 +70,7 @@ impl SortExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "sort_exec")]
 impl ExecutionPlan for SortExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

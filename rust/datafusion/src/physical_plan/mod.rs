@@ -34,6 +34,8 @@ use futures::stream::Stream;
 
 use self::merge::MergeExec;
 
+use serde::{Deserialize, Serialize};
+
 /// Trait for types that stream [arrow::record_batch::RecordBatch]
 pub trait RecordBatchStream: Stream<Item = ArrowResult<RecordBatch>> {
     /// Returns the schema of this `RecordBatchStream`.
@@ -59,6 +61,7 @@ pub trait PhysicalPlanner {
 
 /// Partition-aware execution plan for a relation
 #[async_trait]
+#[typetag::serde(tag = "execution_plan")]
 pub trait ExecutionPlan: Debug + Send + Sync {
     /// Returns the execution plan as [`Any`](std::any::Any) so that it can be
     /// downcast to a specific implementation.
@@ -125,7 +128,7 @@ pub async fn collect_partitioned(
 }
 
 /// Partitioning schemes supported by operators.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Partitioning {
     /// Allocate batches using a round-robin algorithm and the specified number of partitions
     RoundRobinBatch(usize),
@@ -184,6 +187,7 @@ impl ColumnarValue {
 
 /// Expression that can be evaluated against a RecordBatch
 /// A Physical expression knows its type, nullability and how to evaluate itself.
+#[typetag::serde(tag = "physical_expr")]
 pub trait PhysicalExpr: Send + Sync + Display + Debug {
     /// Get the data type of this expression, given the schema of the input
     fn data_type(&self, input_schema: &Schema) -> Result<DataType>;
@@ -198,6 +202,7 @@ pub trait PhysicalExpr: Send + Sync + Display + Debug {
 /// * knows how to create its accumulator
 /// * knows its accumulator's state's field
 /// * knows the expressions from whose its accumulator will receive values
+#[typetag::serde(tag = "aggregate_expr")]
 pub trait AggregateExpr: Send + Sync + Debug {
     /// the field of the final result of this aggregation.
     fn field(&self) -> Result<Field>;

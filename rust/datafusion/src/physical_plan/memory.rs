@@ -30,18 +30,23 @@ use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use futures::Stream;
 
+use serde::{Deserialize, Serialize};
+
 /// Execution plan for reading in-memory batches of data
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryExec {
     /// The partitions to query
+    #[serde(skip)]
     partitions: Vec<Vec<RecordBatch>>,
     /// Schema representing the data after the optional projection is applied
     schema: SchemaRef,
     /// Optional projection
+    #[serde(skip_serializing_if = "Option::is_none")]
     projection: Option<Vec<usize>>,
 }
 
 #[async_trait]
+#[typetag::serde(name = "memory_exec")]
 impl ExecutionPlan for MemoryExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

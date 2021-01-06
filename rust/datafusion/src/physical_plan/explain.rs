@@ -32,10 +32,12 @@ use crate::physical_plan::Partitioning;
 use super::SendableRecordBatchStream;
 use async_trait::async_trait;
 
+use serde::{Deserialize, Serialize};
+
 /// Explain execution plan operator. This operator contains the string
 /// values of the various plans it has when it is created, and passes
 /// them to its output.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplainExec {
     /// The schema that this exec plan node outputs
     schema: SchemaRef,
@@ -55,6 +57,7 @@ impl ExplainExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "explain_exec")]
 impl ExecutionPlan for ExplainExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
