@@ -33,7 +33,7 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 
 /// Execution plan for reading in-memory batches of data
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MemoryExec {
     /// The partitions to query
     #[serde(skip)]
