@@ -20,28 +20,28 @@
 use fmt::{Debug, Formatter};
 use std::fmt;
 
-use arrow::{
-    datatypes::Field,
-    datatypes::{DataType, Schema},
-};
+// use arrow::{
+//     datatypes::Field,
+//     datatypes::{DataType, Schema},
+// };
 
-use crate::physical_plan::PhysicalExpr;
-use crate::{error::Result, logical_plan::Expr};
+// use crate::physical_plan::PhysicalExpr;
+// use crate::error::Result;
+use crate::logical_plan::Expr;
 
 use super::{
     aggregates::AccumulatorFunctionImplementation,
     aggregates::StateTypeFunction,
-    expressions::format_state_name,
+    // expressions::format_state_name,
     functions::{ReturnTypeFunction, Signature},
-    type_coercion::coerce,
-    Accumulator, AggregateExpr,
+    // type_coercion::coerce,
+    // Accumulator, AggregateExpr,
 };
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 /// Logical representation of a user-defined aggregate function (UDAF)
 /// A UDAF is different from a UDF in that it is stateful across batches.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct AggregateUDF {
     /// name
     pub name: String,
@@ -99,66 +99,65 @@ impl AggregateUDF {
     }
 }
 
-/// Creates a physical expression of the UDAF, that includes all necessary type coercion.
-/// This function errors when `args`' can't be coerced to a valid argument type of the UDAF.
-pub fn create_aggregate_expr(
-    fun: &AggregateUDF,
-    args: &Vec<Arc<dyn PhysicalExpr>>,
-    input_schema: &Schema,
-    name: String,
-) -> Result<Arc<dyn AggregateExpr>> {
-    // coerce
-    let args = coerce(args, input_schema, &fun.signature)?;
+// Creates a physical expression of the UDAF, that includes all necessary type coercion.
+// This function errors when `args`' can't be coerced to a valid argument type of the UDAF.
+// pub fn create_aggregate_expr(
+//     fun: &AggregateUDF,
+//     args: &Vec<Arc<dyn PhysicalExpr>>,
+//     input_schema: &Schema,
+//     name: String,
+// ) -> Result<Arc<dyn AggregateExpr>> {
+//     // coerce
+//     let args = coerce(args, input_schema, &fun.signature)?;
 
-    let arg_types = args
-        .iter()
-        .map(|arg| arg.data_type(input_schema))
-        .collect::<Result<Vec<_>>>()?;
+//     let arg_types = args
+//         .iter()
+//         .map(|arg| arg.data_type(input_schema))
+//         .collect::<Result<Vec<_>>>()?;
 
-    Ok(Arc::new(AggregateFunctionExpr {
-        fun: fun.clone(),
-        args: args.clone(),
-        data_type: (fun.return_type)(&arg_types)?.as_ref().clone(),
-        name,
-    }))
-}
+//     Ok(Arc::new(AggregateFunctionExpr {
+//         fun: fun.clone(),
+//         args: args.clone(),
+//         data_type: (fun.return_type)(&arg_types)?.as_ref().clone(),
+//         name,
+//     }))
+// }
 
-/// Physical aggregate expression of a UDAF.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AggregateFunctionExpr {
-    fun: AggregateUDF,
-    args: Vec<Arc<dyn PhysicalExpr>>,
-    data_type: DataType,
-    name: String,
-}
+// Physical aggregate expression of a UDAF.
+// #[derive(Debug)]
+// pub struct AggregateFunctionExpr {
+//     fun: AggregateUDF,
+//     args: Vec<Arc<dyn PhysicalExpr>>,
+//     data_type: DataType,
+//     name: String,
+// }
 
-#[typetag::serde(name = "agg_func_expr")]
-impl AggregateExpr for AggregateFunctionExpr {
-    fn expressions(&self) -> Vec<Arc<dyn PhysicalExpr>> {
-        self.args.clone()
-    }
+// impl AggregateExpr for AggregateFunctionExpr {
+//     fn expressions(&self) -> Vec<Arc<dyn PhysicalExpr>> {
+//         self.args.clone()
+//     }
 
-    fn state_fields(&self) -> Result<Vec<Field>> {
-        let fields = (self.fun.state_type)(&self.data_type)?
-            .iter()
-            .enumerate()
-            .map(|(i, data_type)| {
-                Field::new(
-                    &format_state_name(&self.name, &format!("{}", i)),
-                    data_type.clone(),
-                    true,
-                )
-            })
-            .collect::<Vec<Field>>();
+//     fn state_fields(&self) -> Result<Vec<Field>> {
+//         let fields = (self.fun.state_type)(&self.data_type)?
+//             .iter()
+//             .enumerate()
+//             .map(|(i, data_type)| {
+//                 Field::new(
+//                     &format_state_name(&self.name, &format!("{}", i)),
+//                     data_type.clone(),
+//                     true,
+//                 )
+//             })
+//             .collect::<Vec<Field>>();
 
-        Ok(fields)
-    }
+//         Ok(fields)
+//     }
 
-    fn field(&self) -> Result<Field> {
-        Ok(Field::new(&self.name, self.data_type.clone(), true))
-    }
+//     fn field(&self) -> Result<Field> {
+//         Ok(Field::new(&self.name, self.data_type.clone(), true))
+//     }
 
-    fn create_accumulator(&self) -> Result<Box<dyn Accumulator>> {
-        (self.fun.accumulator)()
-    }
-}
+//     fn create_accumulator(&self) -> Result<Box<dyn Accumulator>> {
+//         (self.fun.accumulator)()
+//     }
+// }

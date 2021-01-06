@@ -43,6 +43,7 @@ use arrow::compute::kernels::comparison::{
     eq_utf8_scalar, gt_eq_utf8_scalar, gt_utf8_scalar, lt_eq_utf8_scalar, lt_utf8_scalar,
     neq_utf8_scalar,
 };
+use arrow::compute::kernels::length::length;
 use arrow::compute::kernels::sort::{SortColumn, SortOptions};
 use arrow::datatypes::{DataType, DateUnit, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
@@ -55,6 +56,10 @@ use arrow::{
     datatypes::Field,
 };
 use compute::can_cast_types;
+
+use crate::physical_plan::string_expressions;
+use crate::physical_plan::array_expressions;
+use crate::physical_plan::datetime_expressions;
 
 use serde::{Deserialize, Serialize};
 
@@ -1600,6 +1605,55 @@ pub fn nullif_func(args: &[ArrayRef]) -> Result<ArrayRef> {
     // Now, invoke nullif on the result
     primitive_bool_array_op!(args[0], *cond_array, nullif)
 }
+
+/// Returns an array of Int32/Int64 denoting the number of characters in each string in the array.
+///
+/// * this only accepts StringArray/Utf8 and LargeString/LargeUtf8
+/// * length of null is null.
+/// * length is in number of bytes
+pub fn length_func(args: &[ArrayRef]) -> Result<ArrayRef> {
+    Ok(length(args[0].as_ref())?)
+}
+
+/// concatenate string columns together.
+pub fn concat_func(args: &[ArrayRef]) -> Result<ArrayRef> {
+    Ok(Arc::new(string_expressions::concatenate(args)?))
+}
+
+/// convert an array of strings into `Timestamp(Nanosecond, None)`
+pub fn to_timestamp_func(args: &[ArrayRef]) -> Result<ArrayRef> {
+    Ok(Arc::new(datetime_expressions::to_timestamp(args)?))
+}
+
+/// date_trunc SQL function
+pub fn date_trunc_func(args: &[ArrayRef]) -> Result<ArrayRef> {
+    Ok(Arc::new(datetime_expressions::date_trunc(args)?))
+}
+
+/// put values in an array
+pub fn array_func(args: &[ArrayRef]) -> Result<ArrayRef> {
+    Ok(array_expressions::array(args)?)
+}
+
+macro_rules! scope_unary_function {
+    ($NAME:expr, $ARG:ident, $FUNC:ident) => {
+        /// mathematical function that accepts f32 or f64 and returns f64
+        pub fn $FUNC(args: &[ArrayRef]) -> Result<ArrayRef> {
+            match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::$ARG::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::$ARG::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function {}",
+                    other, $NAME
+                ))),
+            }
+        }
+    };
+}
+
+scope_unary_function!("lower", lower, lower_func);
+scope_unary_function!("upper", upper, upper_func);
+scope_unary_function!("trim", trim, trim_func);
 
 /// Currently supported types by the nullif function.
 /// The order of these types correspond to the order on which coercion applies

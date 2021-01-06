@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use super::{aggregates, empty::EmptyExec, expressions::binary, functions, udaf};
+use super::{aggregates, empty::EmptyExec, expressions::binary, functions};
 use crate::error::{DataFusionError, Result};
 use crate::execution::context::ExecutionContextState;
 use crate::logical_plan::{
@@ -37,7 +37,7 @@ use crate::physical_plan::merge::MergeExec;
 use crate::physical_plan::projection::ProjectionExec;
 use crate::physical_plan::repartition::RepartitionExec;
 use crate::physical_plan::sort::SortExec;
-use crate::physical_plan::udf;
+// use crate::physical_plan::udf;
 use crate::physical_plan::{expressions, Distribution};
 use crate::physical_plan::{hash_utils, Partitioning};
 use crate::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr, PhysicalPlanner};
@@ -551,22 +551,22 @@ impl DefaultPhysicalPlanner {
                     .collect::<Result<Vec<_>>>()?;
                 functions::create_physical_expr(fun, &physical_args, input_schema)
             }
-            Expr::ScalarUDF { fun, args } => {
-                let mut physical_args = vec![];
-                for e in args {
-                    physical_args.push(self.create_physical_expr(
-                        e,
-                        input_schema,
-                        ctx_state,
-                    )?);
-                }
+            // Expr::ScalarUDF { fun, args } => {
+            //     let mut physical_args = vec![];
+            //     for e in args {
+            //         physical_args.push(self.create_physical_expr(
+            //             e,
+            //             input_schema,
+            //             ctx_state,
+            //         )?);
+            //     }
 
-                udf::create_physical_expr(
-                    fun.clone().as_ref(),
-                    &physical_args,
-                    input_schema,
-                )
-            }
+            //     udf::create_physical_expr(
+            //         fun.clone().as_ref(),
+            //         &physical_args,
+            //         input_schema,
+            //     )
+            // }
             Expr::Between {
                 expr,
                 negated,
@@ -635,16 +635,16 @@ impl DefaultPhysicalPlanner {
                     name,
                 )
             }
-            Expr::AggregateUDF { fun, args, .. } => {
-                let args = args
-                    .iter()
-                    .map(|e| {
-                        self.create_physical_expr(e, physical_input_schema, ctx_state)
-                    })
-                    .collect::<Result<Vec<_>>>()?;
+            // Expr::AggregateUDF { fun, args, .. } => {
+            //     let args = args
+            //         .iter()
+            //         .map(|e| {
+            //             self.create_physical_expr(e, physical_input_schema, ctx_state)
+            //         })
+            //         .collect::<Result<Vec<_>>>()?;
 
-                udaf::create_aggregate_expr(fun, &args, physical_input_schema, name)
-            }
+            //     udaf::create_aggregate_expr(fun, &args, physical_input_schema, name)
+            // }
             other => Err(DataFusionError::Internal(format!(
                 "Invalid aggregate expression '{:?}'",
                 other
