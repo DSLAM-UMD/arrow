@@ -100,6 +100,11 @@ impl MemoryExec {
             projection,
         })
     }
+
+    /// Set the partitions
+    pub fn set_partitions(&mut self, partitions: Vec<Vec<RecordBatch>>) {
+        self.partitions = partitions;
+    }
 }
 
 /// Iterator over batches
