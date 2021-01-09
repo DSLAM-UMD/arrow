@@ -112,7 +112,7 @@ impl ProjectionExec {
         Ok(ProjectionExec {
             expr: self.expr.clone(),
             schema,
-            input: input.clone(),
+            input,
         })
     }
 }
