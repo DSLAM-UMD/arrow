@@ -57,9 +57,9 @@ use arrow::{
 };
 use compute::can_cast_types;
 
-use crate::physical_plan::string_expressions;
 use crate::physical_plan::array_expressions;
 use crate::physical_plan::datetime_expressions;
+use crate::physical_plan::string_expressions;
 
 use serde::{Deserialize, Serialize};
 
@@ -1641,7 +1641,9 @@ macro_rules! scope_unary_function {
         pub fn $FUNC(args: &[ArrayRef]) -> Result<ArrayRef> {
             match args[0].data_type() {
                 DataType::Utf8 => Ok(Arc::new(string_expressions::$ARG::<i32>(args)?)),
-                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::$ARG::<i64>(args)?)),
+                DataType::LargeUtf8 => {
+                    Ok(Arc::new(string_expressions::$ARG::<i64>(args)?))
+                }
                 other => Err(DataFusionError::Internal(format!(
                     "Unsupported data type {:?} for function {}",
                     other, $NAME
@@ -2336,6 +2338,13 @@ pub struct CastExpr {
     expr: Arc<dyn PhysicalExpr>,
     /// The data type to cast to
     cast_type: DataType,
+}
+
+impl CastExpr {
+    /// Create a CastExpr
+    pub fn new(expr: Arc<dyn PhysicalExpr>, cast_type: DataType) -> Self {
+        Self { expr, cast_type }
+    }
 }
 
 /// Determine if a DataType is signed numeric or not
