@@ -25,8 +25,8 @@ use std::task::{Context, Poll};
 
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
-use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
 use crate::physical_plan::dummy::DummyExec;
+use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
 use arrow::array::BooleanArray;
 use arrow::compute::filter_record_batch;
 use arrow::datatypes::{DataType, SchemaRef};
@@ -75,9 +75,26 @@ impl FilterExec {
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<FilterExec> {
         Arc::new(FilterExec {
-            input: Arc::new(DummyExec {}), 
+            input: Arc::new(DummyExec {}),
             predicate: self.predicate.clone(),
         })
+    }
+
+    /// Create a FilterExec plan from a given plan
+    pub fn try_new_from_plan(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Result<Arc<FilterExec>> {
+        match self.predicate.data_type(input.schema().as_ref())? {
+            DataType::Boolean => Ok(Arc::new(FilterExec {
+                predicate: self.predicate.clone(),
+                input,
+            })),
+            other => Err(DataFusionError::Plan(format!(
+                "Filter predicate must return boolean values, not {:?}",
+                other
+            ))),
+        }
     }
 }
 

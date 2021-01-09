@@ -26,8 +26,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
-use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
 use crate::physical_plan::dummy::DummyExec;
+use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
 use arrow::datatypes::{Field, Schema, SchemaRef};
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
@@ -82,9 +82,37 @@ impl ProjectionExec {
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<ProjectionExec> {
         Arc::new(ProjectionExec {
-            input: Arc::new(DummyExec {}), 
+            input: Arc::new(DummyExec {}),
             schema: self.schema.clone(),
             expr: self.expr.clone(),
+        })
+    }
+
+    /// Create a projection from a given plan
+    pub fn try_new_from_plan(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Result<ProjectionExec> {
+        let input_schema = input.schema();
+
+        let fields: Result<Vec<_>> = self
+            .expr
+            .iter()
+            .map(|(e, name)| {
+                Ok(Field::new(
+                    name,
+                    e.data_type(&input_schema)?,
+                    e.nullable(&input_schema)?,
+                ))
+            })
+            .collect();
+
+        let schema = Arc::new(Schema::new(fields?));
+
+        Ok(ProjectionExec {
+            expr: self.expr.clone(),
+            schema,
+            input,
         })
     }
 }
