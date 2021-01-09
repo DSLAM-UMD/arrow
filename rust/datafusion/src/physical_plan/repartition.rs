@@ -25,6 +25,7 @@ use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning};
+use crate::physical_plan::dummy::DummyExec;
 use arrow::datatypes::SchemaRef;
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
@@ -180,6 +181,11 @@ impl RepartitionExec {
                 other
             ))),
         }
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 

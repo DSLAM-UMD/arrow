@@ -278,6 +278,7 @@ pub mod common;
 pub mod csv;
 pub mod datetime_expressions;
 pub mod distinct_expressions;
+pub mod dummy;
 pub mod empty;
 pub mod explain;
 pub mod expressions;

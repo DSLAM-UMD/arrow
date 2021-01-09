@@ -27,6 +27,7 @@ use futures::stream::StreamExt;
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::dummy::DummyExec;
 use arrow::array::ArrayRef;
 use arrow::compute::limit;
 use arrow::datatypes::SchemaRef;
@@ -58,6 +59,11 @@ impl GlobalLimitExec {
             limit,
             concurrency,
         }
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 
@@ -134,6 +140,11 @@ impl LocalLimitExec {
     /// Create a new LocalLimitExec partition
     pub fn new(input: Arc<dyn ExecutionPlan>, limit: usize) -> Self {
         Self { input, limit }
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 
