@@ -48,7 +48,7 @@ use super::{
 use crate::error::{DataFusionError, Result};
 
 use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream};
-use super::empty::DummyExec;
+use super::dummy::DummyExec;
 use ahash::RandomState;
 use log::debug;
 
