@@ -27,9 +27,9 @@ use futures::{
 };
 
 use crate::error::{DataFusionError, Result};
+use crate::physical_plan::dummy::DummyExec;
 use crate::physical_plan::{Accumulator, AggregateExpr};
 use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning, PhysicalExpr};
-use crate::physical_plan::dummy::DummyExec;
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use arrow::error::{ArrowError, Result as ArrowResult};
@@ -136,12 +136,27 @@ impl HashAggregateExec {
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<HashAggregateExec> {
         Arc::new(HashAggregateExec {
-            input: Arc::new(DummyExec {}), 
+            input: Arc::new(DummyExec {}),
             mode: self.mode.clone(),
             group_expr: self.group_expr.clone(),
             aggr_expr: self.aggr_expr.clone(),
             schema: self.schema.clone(),
         })
+    }
+
+    /// Get the group_expr field of this plan
+    pub fn group_expr(&self) -> Vec<(Arc<dyn PhysicalExpr>, String)> {
+        self.group_expr.clone()
+    }
+
+    /// mode Get the mode field of this plan
+    pub fn mode(&self) -> AggregateMode {
+        self.mode.clone()
+    }
+
+    /// Get the aggr_expr field of this plan
+    pub fn aggr_expr(&self) -> Vec<Arc<dyn AggregateExpr>> {
+        self.aggr_expr.clone()
     }
 }
 
