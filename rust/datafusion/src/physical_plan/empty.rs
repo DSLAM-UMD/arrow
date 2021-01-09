@@ -33,6 +33,49 @@ use async_trait::async_trait;
 
 use serde::{Deserialize, Serialize};
 
+/// Dummy execution plan
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DummyExec {}
+
+#[async_trait]
+#[typetag::serde(name = "dummy_exec")]
+impl ExecutionPlan for DummyExec {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    /// Get the schema for this execution plan
+    fn schema(&self) -> SchemaRef {
+        // The filter operator does not make any changes to the schema of its input
+        Arc::new(Schema::empty())
+    }
+
+    fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
+        vec![]
+    }
+
+    /// Get the output partitioning of this plan
+    fn output_partitioning(&self) -> Partitioning {
+        Partitioning::UnknownPartitioning(0)
+    }
+
+    fn with_new_children(
+        &self,
+        _: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        Err(DataFusionError::Internal(
+            "DummyExec invalid children".to_string(),
+        ))
+    }
+
+    async fn execute(&self, _: usize) -> Result<SendableRecordBatchStream> {
+        Err(DataFusionError::Internal(
+            "DummyExec invalid partition".to_string(),
+        ))
+    }
+}
+
 /// Execution plan for empty relation (produces no rows)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmptyExec {

@@ -26,6 +26,7 @@ use std::task::{Context, Poll};
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
+use crate::physical_plan::dummy::DummyExec;
 use arrow::array::BooleanArray;
 use arrow::compute::filter_record_batch;
 use arrow::datatypes::{DataType, SchemaRef};
@@ -64,6 +65,11 @@ impl FilterExec {
                 other
             ))),
         }
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 

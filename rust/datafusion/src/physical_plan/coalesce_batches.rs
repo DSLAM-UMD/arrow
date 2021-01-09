@@ -27,6 +27,7 @@ use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{
     ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream,
 };
+use crate::physical_plan::dummy::DummyExec;
 
 use arrow::compute::kernels::concat::concat;
 use arrow::datatypes::SchemaRef;
@@ -55,6 +56,11 @@ impl CoalesceBatchesExec {
             input,
             target_batch_size,
         }
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 

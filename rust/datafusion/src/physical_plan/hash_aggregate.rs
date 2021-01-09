@@ -29,6 +29,7 @@ use futures::{
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{Accumulator, AggregateExpr};
 use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning, PhysicalExpr};
+use crate::physical_plan::dummy::DummyExec;
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use arrow::error::{ArrowError, Result as ArrowResult};
@@ -125,6 +126,11 @@ impl HashAggregateExec {
             input,
             schema,
         })
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 
