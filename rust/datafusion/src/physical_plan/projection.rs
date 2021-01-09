@@ -27,6 +27,7 @@ use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
+use crate::physical_plan::dummy::DummyExec;
 use arrow::datatypes::{Field, Schema, SchemaRef};
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
@@ -75,6 +76,15 @@ impl ProjectionExec {
             expr,
             schema,
             input: input.clone(),
+        })
+    }
+
+    /// Get new orphan of execution plan
+    pub fn new_orphan(&self) -> Arc<ProjectionExec> {
+        Arc::new(ProjectionExec {
+            input: Arc::new(DummyExec {}), 
+            schema: self.schema.clone(),
+            expr: self.expr.clone(),
         })
     }
 }

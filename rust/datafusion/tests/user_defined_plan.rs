@@ -76,7 +76,7 @@ use datafusion::{
     physical_plan::{
         planner::{DefaultPhysicalPlanner, ExtensionPlanner},
         Distribution, ExecutionPlan, Partitioning, PhysicalPlanner, RecordBatchStream,
-        SendableRecordBatchStream,
+        SendableRecordBatchStream, empty::DummyExec,
     },
     prelude::{ExecutionConfig, ExecutionContext},
 };
@@ -86,6 +86,8 @@ use std::{any::Any, collections::BTreeMap, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use datafusion::logical_plan::DFSchemaRef;
+
+use serde::{Deserialize, Serialize};
 
 /// Execute the specified sql and return the resulting record batches
 /// pretty printed as a String.
@@ -346,10 +348,18 @@ impl ExtensionPlanner for TopKPlanner {
 
 /// Physical operator that implements TopK for u64 data types. This
 /// code is not general and is meant as an illustration only
+#[derive(Serialize, Deserialize)]
 struct TopKExec {
     input: Arc<dyn ExecutionPlan>,
     /// The maxium number of values
     k: usize,
+}
+
+impl TopKExec { 
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
+    }
 }
 
 impl Debug for TopKExec {
@@ -359,6 +369,7 @@ impl Debug for TopKExec {
 }
 
 #[async_trait]
+#[typetag::serde(name = "top_k_exec")]
 impl ExecutionPlan for TopKExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {

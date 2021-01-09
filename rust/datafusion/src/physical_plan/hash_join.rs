@@ -48,6 +48,7 @@ use super::{
 use crate::error::{DataFusionError, Result};
 
 use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream};
+use super::dummy::DummyExec;
 use ahash::RandomState;
 use log::debug;
 
@@ -121,6 +122,12 @@ impl HashJoinExec {
             schema,
             build_side: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.left  = Arc::new(DummyExec {});
+        self.right = Arc::new(DummyExec {});
     }
 }
 

@@ -38,6 +38,7 @@ use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::expressions::PhysicalSortExpr;
 use crate::physical_plan::{common, Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::dummy::DummyExec;
 
 use async_trait::async_trait;
 
@@ -66,6 +67,11 @@ impl SortExec {
             input,
             concurrency,
         })
+    }
+
+    /// Use DummyExec to split execution plan
+    pub fn split(&mut self) {
+        self.input = Arc::new(DummyExec {});
     }
 }
 
