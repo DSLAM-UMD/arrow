@@ -88,7 +88,7 @@ impl FilterExec {
         match self.predicate.data_type(input.schema().as_ref())? {
             DataType::Boolean => Ok(Arc::new(FilterExec {
                 predicate: self.predicate.clone(),
-                input: input.clone(),
+                input,
             })),
             other => Err(DataFusionError::Plan(format!(
                 "Filter predicate must return boolean values, not {:?}",
