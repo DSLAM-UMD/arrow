@@ -62,6 +62,14 @@ impl CoalesceBatchesExec {
     pub fn split(&mut self) {
         self.input = Arc::new(DummyExec {});
     }
+
+    /// Get new orphan of execution plan
+    pub fn new_orphan(&self) -> Arc<CoalesceBatchesExec> {
+        Arc::new(CoalesceBatchesExec {
+            input: Arc::new(DummyExec {}), 
+            target_batch_size: self.target_batch_size
+        })
+    }
 }
 
 #[async_trait]

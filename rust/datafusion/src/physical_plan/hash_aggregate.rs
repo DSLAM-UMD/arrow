@@ -132,6 +132,17 @@ impl HashAggregateExec {
     pub fn split(&mut self) {
         self.input = Arc::new(DummyExec {});
     }
+
+    /// Get new orphan of execution plan
+    pub fn new_orphan(&self) -> Arc<HashAggregateExec> {
+        Arc::new(HashAggregateExec {
+            input: Arc::new(DummyExec {}), 
+            mode: self.mode.clone(),
+            group_expr: self.group_expr.clone(),
+            aggr_expr: self.aggr_expr.clone(),
+            schema: self.schema.clone(),
+        })
+    }
 }
 
 #[async_trait]
