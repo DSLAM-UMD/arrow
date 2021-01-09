@@ -71,6 +71,14 @@ impl FilterExec {
     pub fn split(&mut self) {
         self.input = Arc::new(DummyExec {});
     }
+
+    /// Get new orphan of execution plan
+    pub fn new_orphan(&self) -> Arc<FilterExec> {
+        Arc::new(FilterExec {
+            input: Arc::new(DummyExec {}), 
+            predicate: self.predicate.clone(),
+        })
+    }
 }
 
 #[async_trait]
