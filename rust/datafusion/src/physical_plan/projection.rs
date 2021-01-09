@@ -88,9 +88,32 @@ impl ProjectionExec {
         })
     }
 
-    /// Get the expr field of this plan
-    pub fn expr(&self) -> Vec<(Arc<dyn PhysicalExpr>, String)> {
-        self.expr.clone()
+    /// Create a projection from a given plan
+    pub fn try_new_from_plan(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Result<ProjectionExec> {
+        let input_schema = input.schema();
+
+        let fields: Result<Vec<_>> = self
+            .expr
+            .iter()
+            .map(|(e, name)| {
+                Ok(Field::new(
+                    name,
+                    e.data_type(&input_schema)?,
+                    e.nullable(&input_schema)?,
+                ))
+            })
+            .collect();
+
+        let schema = Arc::new(Schema::new(fields?));
+
+        Ok(ProjectionExec {
+            expr: self.expr.clone(),
+            schema,
+            input: input.clone(),
+        })
     }
 }
 

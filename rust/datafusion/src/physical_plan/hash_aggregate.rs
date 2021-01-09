@@ -144,19 +144,27 @@ impl HashAggregateExec {
         })
     }
 
-    /// Get the group_expr field of this plan
-    pub fn group_expr(&self) -> Vec<(Arc<dyn PhysicalExpr>, String)> {
-        self.group_expr.clone()
-    }
+    /// Create a new hash aggregate execution plan from a given plan
+    pub fn try_new_from_plan(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Result<HashAggregateExec> {
+        let schema = create_schema(
+            &input.schema(),
+            &self.group_expr,
+            &self.aggr_expr,
+            self.mode,
+        )?;
 
-    /// mode Get the mode field of this plan
-    pub fn mode(&self) -> AggregateMode {
-        self.mode.clone()
-    }
+        let schema = Arc::new(schema);
 
-    /// Get the aggr_expr field of this plan
-    pub fn aggr_expr(&self) -> Vec<Arc<dyn AggregateExpr>> {
-        self.aggr_expr.clone()
+        Ok(HashAggregateExec {
+            mode: self.mode,
+            group_expr: self.group_expr.clone(),
+            aggr_expr: self.aggr_expr.clone(),
+            input,
+            schema,
+        })
     }
 }
 

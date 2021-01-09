@@ -80,9 +80,21 @@ impl FilterExec {
         })
     }
 
-    /// Get the predicate field of this plan
-    pub fn predicate(&self) -> Arc<dyn PhysicalExpr> {
-        self.predicate.clone()
+    /// Create a FilterExec plan from a given plan
+    pub fn try_new_from_plan(
+        &self,
+        input: Arc<dyn ExecutionPlan>,
+    ) -> Result<Arc<FilterExec>> {
+        match self.predicate.data_type(input.schema().as_ref())? {
+            DataType::Boolean => Ok(Arc::new(FilterExec {
+                predicate: self.predicate.clone(),
+                input: input.clone(),
+            })),
+            other => Err(DataFusionError::Plan(format!(
+                "Filter predicate must return boolean values, not {:?}",
+                other
+            ))),
+        }
     }
 }
 
