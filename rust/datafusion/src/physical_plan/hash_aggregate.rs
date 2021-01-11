@@ -168,7 +168,7 @@ impl HashAggregateExec {
 
 #[async_trait]
 impl LambdaExecPlan for HashAggregateExec {
-    pub fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>) {
+    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>) {
         self.input = Arc::new(MemoryExec {
             partitions,
             schema: self.schema(),
