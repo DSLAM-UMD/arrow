@@ -105,6 +105,11 @@ impl MemoryExec {
     pub fn set_partitions(&mut self, partitions: Vec<Vec<RecordBatch>>) {
         self.partitions = partitions;
     }
+
+    /// Get the projection
+    pub fn projection(&self) -> &Option<Vec<usize>> {
+        &self.projection
+    }
 }
 
 /// Iterator over batches
