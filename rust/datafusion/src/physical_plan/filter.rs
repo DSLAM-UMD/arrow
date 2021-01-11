@@ -25,8 +25,8 @@ use std::task::{Context, Poll};
 
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
-use crate::physical_plan::dummy::DummyExec;
-use crate::physical_plan::{ExecutionPlan, Partitioning, PhysicalExpr};
+use crate::physical_plan::memory::MemoryExec;
+use crate::physical_plan::{ExecutionPlan, LambdaExecPlan, Partitioning, PhysicalExpr};
 use arrow::array::BooleanArray;
 use arrow::compute::filter_record_batch;
 use arrow::datatypes::{DataType, SchemaRef};
@@ -69,27 +69,15 @@ impl FilterExec {
 
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<FilterExec> {
+        let mut projection = None;
+        if let Some(memory_exec) = self.input().as_any().downcast_ref::<MemoryExec>() {
+            projection = memory_exec.projection().clone();
+        }
+        let memory_exec = MemoryExec::try_new(&vec![], self.schema(), projection).unwrap();
         Arc::new(FilterExec {
-            input: Arc::new(DummyExec {}),
+            input: Arc::new(memory_exec),
             predicate: self.predicate.clone(),
         })
-    }
-
-    /// Create a FilterExec plan from a given plan
-    pub fn try_new_from_plan(
-        &self,
-        input: Arc<dyn ExecutionPlan>,
-    ) -> Result<Arc<FilterExec>> {
-        match self.predicate.data_type(input.schema().as_ref())? {
-            DataType::Boolean => Ok(Arc::new(FilterExec {
-                predicate: self.predicate.clone(),
-                input,
-            })),
-            other => Err(DataFusionError::Plan(format!(
-                "Filter predicate must return boolean values, not {:?}",
-                other
-            ))),
-        }
     }
 
     /// The expression to filter on. This expression must evaluate to a boolean value.
@@ -100,6 +88,17 @@ impl FilterExec {
     /// The input plan
     pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
         &self.input
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for FilterExec {
+    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>) {
+        self.input = Arc::new(MemoryExec {
+            partitions,
+            schema: self.schema(),
+            projection: None,
+        });
     }
 }
 

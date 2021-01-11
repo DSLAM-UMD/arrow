@@ -24,10 +24,10 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
+use crate::physical_plan::memory::MemoryExec;
 use crate::physical_plan::{
-    ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream,
+    ExecutionPlan, LambdaExecPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream,
 };
-use crate::physical_plan::dummy::DummyExec;
 
 use arrow::compute::kernels::concat::concat;
 use arrow::datatypes::SchemaRef;
@@ -60,8 +60,13 @@ impl CoalesceBatchesExec {
 
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<CoalesceBatchesExec> {
+        let mut projection = None;
+        if let Some(memory_exec) = self.input().as_any().downcast_ref::<MemoryExec>() {
+            projection = memory_exec.projection().clone();
+        }
+        let memory_exec = MemoryExec::try_new(&vec![], self.schema(), projection).unwrap();
         Arc::new(CoalesceBatchesExec {
-            input: Arc::new(DummyExec {}), 
+            input: Arc::new(memory_exec),
             target_batch_size: self.target_batch_size
         })
     }
@@ -74,6 +79,17 @@ impl CoalesceBatchesExec {
     /// Minimum number of rows for coalesces batches
     pub fn target_batch_size(&self) -> usize {
         self.target_batch_size
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for CoalesceBatchesExec {
+    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>) {
+        self.input = Arc::new(MemoryExec {
+            partitions,
+            schema: self.schema(),
+            projection: None,
+        });
     }
 }
 
