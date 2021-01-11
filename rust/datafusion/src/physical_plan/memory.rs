@@ -37,12 +37,12 @@ use serde::{Deserialize, Serialize};
 pub struct MemoryExec {
     /// The partitions to query
     #[serde(skip)]
-    partitions: Vec<Vec<RecordBatch>>,
+    pub partitions: Vec<Vec<RecordBatch>>,
     /// Schema representing the data after the optional projection is applied
-    schema: SchemaRef,
+    pub schema: SchemaRef,
     /// Optional projection
     // #[serde(skip_serializing_if = "Option::is_none")]
-    projection: Option<Vec<usize>>,
+    pub projection: Option<Vec<usize>>,
 }
 
 #[async_trait]

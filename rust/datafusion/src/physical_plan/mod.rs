@@ -89,6 +89,12 @@ pub trait ExecutionPlan: Debug + Send + Sync {
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream>;
 }
 
+/// Partition-aware execution plan for a relation on AWS Lambda
+pub trait LambdaExecPlan: Debug + Send + Sync { 
+    /// Feed record batches from other lambda function
+    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>);
+}
+
 /// Execute the [ExecutionPlan] and collect the results in memory
 pub async fn collect(plan: Arc<dyn ExecutionPlan>) -> Result<Vec<RecordBatch>> {
     match plan.output_partitioning().partition_count() {

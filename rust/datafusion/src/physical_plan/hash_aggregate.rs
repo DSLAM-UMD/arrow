@@ -27,9 +27,9 @@ use futures::{
 };
 
 use crate::error::{DataFusionError, Result};
-use crate::physical_plan::dummy::DummyExec;
 use crate::physical_plan::{Accumulator, AggregateExpr};
-use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning, PhysicalExpr};
+use crate::physical_plan::memory::MemoryExec;
+use crate::physical_plan::{Distribution, ExecutionPlan, LambdaExecPlan, Partitioning, PhysicalExpr};
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use arrow::error::{ArrowError, Result as ArrowResult};
@@ -135,35 +135,13 @@ impl HashAggregateExec {
 
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<HashAggregateExec> {
+        let memory_exec = MemoryExec::try_new(&vec![], self.schema(), None).unwrap();
         Arc::new(HashAggregateExec {
-            input: Arc::new(DummyExec {}),
+            input: Arc::new(memory_exec),
             mode: self.mode.clone(),
             group_expr: self.group_expr.clone(),
             aggr_expr: self.aggr_expr.clone(),
-            schema: self.schema.clone(),
-        })
-    }
-
-    /// Create a new hash aggregate execution plan from a given plan
-    pub fn try_new_from_plan(
-        &self,
-        input: Arc<dyn ExecutionPlan>,
-    ) -> Result<HashAggregateExec> {
-        let schema = create_schema(
-            &input.schema(),
-            &self.group_expr,
-            &self.aggr_expr,
-            self.mode,
-        )?;
-
-        let schema = Arc::new(schema);
-
-        Ok(HashAggregateExec {
-            mode: self.mode,
-            group_expr: self.group_expr.clone(),
-            aggr_expr: self.aggr_expr.clone(),
-            input,
-            schema,
+            schema: self.schema(),
         })
     }
 
@@ -185,6 +163,17 @@ impl HashAggregateExec {
     /// Input plan
     pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
         &self.input
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for HashAggregateExec {
+    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>) {
+        self.input = Arc::new(MemoryExec {
+            partitions,
+            schema: self.schema(),
+            projection: None,
+        });
     }
 }
 
