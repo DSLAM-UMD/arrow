@@ -70,7 +70,7 @@ struct ARROW_EXPORT SplitPatternOptions : public SplitOptions {
 
 /// Options for IsIn and IndexIn functions
 struct ARROW_EXPORT SetLookupOptions : public FunctionOptions {
-  explicit SetLookupOptions(Datum value_set, bool skip_nulls)
+  explicit SetLookupOptions(Datum value_set, bool skip_nulls = false)
       : value_set(std::move(value_set)), skip_nulls(skip_nulls) {}
 
   /// The set of values to look up input values into.
@@ -86,7 +86,7 @@ struct ARROW_EXPORT SetLookupOptions : public FunctionOptions {
 
 struct ARROW_EXPORT StrptimeOptions : public FunctionOptions {
   explicit StrptimeOptions(std::string format, TimeUnit::type unit)
-      : format(format), unit(unit) {}
+      : format(std::move(format)), unit(unit) {}
 
   std::string format;
   TimeUnit::type unit;
@@ -105,6 +105,13 @@ struct CompareOptions : public FunctionOptions {
   explicit CompareOptions(CompareOperator op) : op(op) {}
 
   enum CompareOperator op;
+};
+
+struct ARROW_EXPORT ProjectOptions : public FunctionOptions {
+  explicit ProjectOptions(std::vector<std::string> n) : field_names(std::move(n)) {}
+
+  /// Names for wrapped columns
+  std::vector<std::string> field_names;
 };
 
 /// @}
@@ -344,6 +351,18 @@ Result<Datum> IsValid(const Datum& values, ExecContext* ctx = NULLPTR);
 /// \note API not yet finalized
 ARROW_EXPORT
 Result<Datum> IsNull(const Datum& values, ExecContext* ctx = NULLPTR);
+
+/// \brief IsNan returns true for each element of `values` that is NaN,
+/// false otherwise
+///
+/// \param[in] values input to look for NaN
+/// \param[in] ctx the function execution context, optional
+/// \return the resulting datum
+///
+/// \since 3.0.0
+/// \note API not yet finalized
+ARROW_EXPORT
+Result<Datum> IsNan(const Datum& values, ExecContext* ctx = NULLPTR);
 
 /// \brief FillNull replaces each null element in `values`
 /// with `fill_value`

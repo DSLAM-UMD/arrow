@@ -38,7 +38,9 @@ use serde::{Deserialize, Serialize};
 /// Execution plan for empty relation (produces no rows)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmptyExec {
+    /// Specifies whether this exec produces a row or not
     produce_one_row: bool,
+    /// The schema for the produced row
     schema: SchemaRef,
 }
 
@@ -49,6 +51,11 @@ impl EmptyExec {
             produce_one_row,
             schema,
         }
+    }
+
+    /// Specifies whether this exec produces a row or not
+    pub fn produce_one_row(&self) -> bool {
+        self.produce_one_row
     }
 }
 

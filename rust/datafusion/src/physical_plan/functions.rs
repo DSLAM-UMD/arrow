@@ -35,19 +35,19 @@ use super::{
 };
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::array_expressions;
-use crate::physical_plan::expressions::{
-    nullif_func, length_func, concat_func, to_timestamp_func, date_trunc_func,
-    array_func, lower_func, trim_func, upper_func, SUPPORTED_NULLIF_TYPES
-};
+use crate::physical_plan::datetime_expressions;
+use crate::physical_plan::expressions::{nullif_func, SUPPORTED_NULLIF_TYPES};
 use crate::physical_plan::math_expressions;
+use crate::physical_plan::string_expressions;
 use arrow::{
     array::ArrayRef,
+    compute::kernels::length::length,
     datatypes::TimeUnit,
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
 use fmt::{Debug, Formatter};
-use std::{fmt, str::FromStr, sync::Arc};
+use std::{any::Any, fmt, str::FromStr, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -126,6 +126,10 @@ pub enum BuiltinScalarFunction {
     Upper,
     /// trim
     Trim,
+    /// trim left
+    Ltrim,
+    /// trim right
+    Rtrim,
     /// to_timestamp
     ToTimestamp,
     /// construct an array from columns
@@ -157,14 +161,57 @@ impl BuiltinScalarFunction {
             BuiltinScalarFunction::Abs => math_expressions::abs,
             BuiltinScalarFunction::Signum => math_expressions::signum,
             BuiltinScalarFunction::NullIf => nullif_func,
-            BuiltinScalarFunction::Length => length_func,
-            BuiltinScalarFunction::Concat => concat_func,
-            BuiltinScalarFunction::Lower => lower_func,
-            BuiltinScalarFunction::Trim => trim_func,
-            BuiltinScalarFunction::Upper => upper_func,
-            BuiltinScalarFunction::ToTimestamp => to_timestamp_func,
-            BuiltinScalarFunction::DateTrunc => date_trunc_func,
-            BuiltinScalarFunction::Array => array_func,
+            BuiltinScalarFunction::Length => |args| Ok(length(args[0].as_ref())?),
+            BuiltinScalarFunction::Concat => {
+                |args| Ok(Arc::new(string_expressions::concatenate(args)?))
+            }
+            BuiltinScalarFunction::Lower => |args| match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::lower::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::lower::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function lower",
+                    other,
+                ))),
+            },
+            BuiltinScalarFunction::Trim => |args| match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::trim::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::trim::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function trim",
+                    other,
+                ))),
+            },
+            BuiltinScalarFunction::Ltrim => |args| match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::ltrim::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::ltrim::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function ltrim",
+                    other,
+                ))),
+            },
+            BuiltinScalarFunction::Rtrim => |args| match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::rtrim::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::rtrim::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function rtrim",
+                    other,
+                ))),
+            },
+            BuiltinScalarFunction::Upper => |args| match args[0].data_type() {
+                DataType::Utf8 => Ok(Arc::new(string_expressions::upper::<i32>(args)?)),
+                DataType::LargeUtf8 => Ok(Arc::new(string_expressions::upper::<i64>(args)?)),
+                other => Err(DataFusionError::Internal(format!(
+                    "Unsupported data type {:?} for function upper",
+                    other,
+                ))),
+            },
+            BuiltinScalarFunction::ToTimestamp => {
+                |args| Ok(Arc::new(datetime_expressions::to_timestamp(args)?))
+            }
+            BuiltinScalarFunction::DateTrunc => {
+                |args| Ok(Arc::new(datetime_expressions::date_trunc(args)?))
+            }
+            BuiltinScalarFunction::Array => |args| Ok(array_expressions::array(args)?),
         })
     }    
 }
@@ -203,6 +250,8 @@ impl FromStr for BuiltinScalarFunction {
             "concat" => BuiltinScalarFunction::Concat,
             "lower" => BuiltinScalarFunction::Lower,
             "trim" => BuiltinScalarFunction::Trim,
+            "ltrim" => BuiltinScalarFunction::Ltrim,
+            "rtrim" => BuiltinScalarFunction::Rtrim,
             "upper" => BuiltinScalarFunction::Upper,
             "to_timestamp" => BuiltinScalarFunction::ToTimestamp,
             "date_trunc" => BuiltinScalarFunction::DateTrunc,
@@ -259,6 +308,26 @@ pub fn return_type(
                 // this error is internal as `data_types` should have captured this.
                 return Err(DataFusionError::Internal(
                     "The upper function can only accept strings.".to_string(),
+                ));
+            }
+        }),
+        BuiltinScalarFunction::Ltrim => Ok(match arg_types[0] {
+            DataType::LargeUtf8 => DataType::LargeUtf8,
+            DataType::Utf8 => DataType::Utf8,
+            _ => {
+                // this error is internal as `data_types` should have captured this.
+                return Err(DataFusionError::Internal(
+                    "The ltrim function can only accept strings.".to_string(),
+                ));
+            }
+        }),
+        BuiltinScalarFunction::Rtrim => Ok(match arg_types[0] {
+            DataType::LargeUtf8 => DataType::LargeUtf8,
+            DataType::Utf8 => DataType::Utf8,
+            _ => {
+                // this error is internal as `data_types` should have captured this.
+                return Err(DataFusionError::Internal(
+                    "The rtrim function can only accept strings.".to_string(),
                 ));
             }
         }),
@@ -343,6 +412,12 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
         BuiltinScalarFunction::Trim => {
             Signature::Uniform(1, vec![DataType::Utf8, DataType::LargeUtf8])
         }
+        BuiltinScalarFunction::Ltrim => {
+            Signature::Uniform(1, vec![DataType::Utf8, DataType::LargeUtf8])
+        }
+        BuiltinScalarFunction::Rtrim => {
+            Signature::Uniform(1, vec![DataType::Utf8, DataType::LargeUtf8])
+        }
         BuiltinScalarFunction::ToTimestamp => Signature::Uniform(1, vec![DataType::Utf8]),
         BuiltinScalarFunction::DateTrunc => Signature::Exact(vec![
             DataType::Utf8,
@@ -398,6 +473,26 @@ impl ScalarFunctionExpr {
             return_type: return_type.clone(),
         }
     }
+
+    /// Get the scalar function implementation
+    pub fn fun(&self) -> &BuiltinScalarFunction {
+        &self.fun
+    }
+
+    /// The name for this expression
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Input arguments
+    pub fn args(&self) -> &[Arc<dyn PhysicalExpr>] {
+        &self.args
+    }
+
+    /// Data type produced by this expression
+    pub fn return_type(&self) -> &DataType {
+        &self.return_type
+    }
 }
 
 impl fmt::Display for ScalarFunctionExpr {
@@ -417,6 +512,11 @@ impl fmt::Display for ScalarFunctionExpr {
 
 #[typetag::serde(name = "scalar_function_expr")]
 impl PhysicalExpr for ScalarFunctionExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.return_type.clone())
     }

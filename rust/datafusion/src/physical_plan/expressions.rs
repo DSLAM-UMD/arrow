@@ -17,6 +17,7 @@
 
 //! Defines physical expressions that can evaluated at runtime during query execution
 
+use std::any::Any;
 use std::convert::TryFrom;
 use std::fmt;
 use std::sync::Arc;
@@ -26,7 +27,10 @@ use crate::error::{DataFusionError, Result};
 use crate::logical_plan::Operator;
 use crate::physical_plan::{Accumulator, AggregateExpr, PhysicalExpr};
 use crate::scalar::ScalarValue;
-use arrow::array::{self, Array, BooleanBuilder, LargeStringArray};
+use arrow::array::{
+    self, Array, BooleanBuilder, GenericStringArray, LargeStringArray,
+    StringOffsetSizeTrait,
+};
 use arrow::compute;
 use arrow::compute::kernels;
 use arrow::compute::kernels::arithmetic::{add, divide, multiply, negate, subtract};
@@ -43,7 +47,6 @@ use arrow::compute::kernels::comparison::{
     eq_utf8_scalar, gt_eq_utf8_scalar, gt_utf8_scalar, lt_eq_utf8_scalar, lt_utf8_scalar,
     neq_utf8_scalar,
 };
-use arrow::compute::kernels::length::length;
 use arrow::compute::kernels::sort::{SortColumn, SortOptions};
 use arrow::datatypes::{DataType, DateUnit, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
@@ -56,10 +59,6 @@ use arrow::{
     datatypes::Field,
 };
 use compute::can_cast_types;
-
-use crate::physical_plan::array_expressions;
-use crate::physical_plan::datetime_expressions;
-use crate::physical_plan::string_expressions;
 
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +80,11 @@ impl Column {
             name: name.to_owned(),
         }
     }
+
+    /// Get the column name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl fmt::Display for Column {
@@ -91,6 +95,11 @@ impl fmt::Display for Column {
 
 #[typetag::serde(name = "column")]
 impl PhysicalExpr for Column {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     /// Get the data type of this expression, given the schema of the input
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         Ok(input_schema
@@ -1164,6 +1173,21 @@ impl BinaryExpr {
     ) -> Self {
         Self { left, op, right }
     }
+
+    /// Get the left side of the binary expression
+    pub fn left(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.left
+    }
+
+    /// Get the right side of the binary expression
+    pub fn right(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.right
+    }
+
+    /// Get the operator for this binary expression
+    pub fn op(&self) -> &Operator {
+        &self.op
+    }
 }
 
 impl fmt::Display for BinaryExpr {
@@ -1410,6 +1434,11 @@ fn binary_cast(
 
 #[typetag::serde(name = "binary_expr")]
 impl PhysicalExpr for BinaryExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         binary_operator_data_type(
             &self.left.data_type(input_schema)?,
@@ -1606,57 +1635,6 @@ pub fn nullif_func(args: &[ArrayRef]) -> Result<ArrayRef> {
     primitive_bool_array_op!(args[0], *cond_array, nullif)
 }
 
-/// Returns an array of Int32/Int64 denoting the number of characters in each string in the array.
-///
-/// * this only accepts StringArray/Utf8 and LargeString/LargeUtf8
-/// * length of null is null.
-/// * length is in number of bytes
-pub fn length_func(args: &[ArrayRef]) -> Result<ArrayRef> {
-    Ok(length(args[0].as_ref())?)
-}
-
-/// concatenate string columns together.
-pub fn concat_func(args: &[ArrayRef]) -> Result<ArrayRef> {
-    Ok(Arc::new(string_expressions::concatenate(args)?))
-}
-
-/// convert an array of strings into `Timestamp(Nanosecond, None)`
-pub fn to_timestamp_func(args: &[ArrayRef]) -> Result<ArrayRef> {
-    Ok(Arc::new(datetime_expressions::to_timestamp(args)?))
-}
-
-/// date_trunc SQL function
-pub fn date_trunc_func(args: &[ArrayRef]) -> Result<ArrayRef> {
-    Ok(Arc::new(datetime_expressions::date_trunc(args)?))
-}
-
-/// put values in an array
-pub fn array_func(args: &[ArrayRef]) -> Result<ArrayRef> {
-    Ok(array_expressions::array(args)?)
-}
-
-macro_rules! scope_unary_function {
-    ($NAME:expr, $ARG:ident, $FUNC:ident) => {
-        /// mathematical function that accepts f32 or f64 and returns f64
-        pub fn $FUNC(args: &[ArrayRef]) -> Result<ArrayRef> {
-            match args[0].data_type() {
-                DataType::Utf8 => Ok(Arc::new(string_expressions::$ARG::<i32>(args)?)),
-                DataType::LargeUtf8 => {
-                    Ok(Arc::new(string_expressions::$ARG::<i64>(args)?))
-                }
-                other => Err(DataFusionError::Internal(format!(
-                    "Unsupported data type {:?} for function {}",
-                    other, $NAME
-                ))),
-            }
-        }
-    };
-}
-
-scope_unary_function!("lower", lower, lower_func);
-scope_unary_function!("upper", upper, upper_func);
-scope_unary_function!("trim", trim, trim_func);
-
 /// Currently supported types by the nullif function.
 /// The order of these types correspond to the order on which coercion applies
 /// This should thus be from least informative to most informative
@@ -1677,6 +1655,7 @@ pub static SUPPORTED_NULLIF_TYPES: &[DataType] = &[
 /// Not expression
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NotExpr {
+    /// Input expression
     arg: Arc<dyn PhysicalExpr>,
 }
 
@@ -1684,6 +1663,11 @@ impl NotExpr {
     /// Create new not expression
     pub fn new(arg: Arc<dyn PhysicalExpr>) -> Self {
         Self { arg }
+    }
+
+    /// Get the input expression
+    pub fn arg(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.arg
     }
 }
 
@@ -1695,6 +1679,11 @@ impl fmt::Display for NotExpr {
 
 #[typetag::serde(name = "not_expr")]
 impl PhysicalExpr for NotExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
     }
@@ -1754,6 +1743,7 @@ pub fn not(
 /// Negative expression
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NegativeExpr {
+    /// Input expression
     arg: Arc<dyn PhysicalExpr>,
 }
 
@@ -1761,6 +1751,11 @@ impl NegativeExpr {
     /// Create new not expression
     pub fn new(arg: Arc<dyn PhysicalExpr>) -> Self {
         Self { arg }
+    }
+
+    /// Get the input expression
+    pub fn arg(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.arg
     }
 }
 
@@ -1772,6 +1767,11 @@ impl fmt::Display for NegativeExpr {
 
 #[typetag::serde(name = "negative_expr")]
 impl PhysicalExpr for NegativeExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         self.arg.data_type(input_schema)
     }
@@ -1831,6 +1831,7 @@ pub fn negative(
 /// IS NULL expression
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IsNullExpr {
+    /// Input expression
     arg: Arc<dyn PhysicalExpr>,
 }
 
@@ -1838,6 +1839,11 @@ impl IsNullExpr {
     /// Create new not expression
     pub fn new(arg: Arc<dyn PhysicalExpr>) -> Self {
         Self { arg }
+    }
+
+    /// Get the input expression
+    pub fn arg(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.arg
     }
 }
 
@@ -1849,6 +1855,11 @@ impl fmt::Display for IsNullExpr {
 
 #[typetag::serde(name = "is_null_expr")]
 impl PhysicalExpr for IsNullExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
     }
@@ -1878,6 +1889,7 @@ pub fn is_null(arg: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExpr>> {
 /// IS NULL expression
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IsNotNullExpr {
+    /// The input expression
     arg: Arc<dyn PhysicalExpr>,
 }
 
@@ -1885,6 +1897,11 @@ impl IsNotNullExpr {
     /// Create new not expression
     pub fn new(arg: Arc<dyn PhysicalExpr>) -> Self {
         Self { arg }
+    }
+
+    /// Get the input expression
+    pub fn arg(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.arg
     }
 }
 
@@ -1896,6 +1913,11 @@ impl fmt::Display for IsNotNullExpr {
 
 #[typetag::serde(name = "is_not_null_expr")]
 impl PhysicalExpr for IsNotNullExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(DataType::Boolean)
     }
@@ -1983,6 +2005,21 @@ impl CaseExpr {
                 else_expr,
             })
         }
+    }
+
+    /// Optional base expression that can be compared to literal values in the "when" expressions
+    pub fn expr(&self) -> &Option<Arc<dyn PhysicalExpr>> {
+        &self.expr
+    }
+
+    /// One or more when/then expressions
+    pub fn when_then_expr(&self) -> &[(Arc<dyn PhysicalExpr>, Arc<dyn PhysicalExpr>)] {
+        &self.when_then_expr
+    }
+
+    /// Optional "else" expression
+    pub fn else_expr(&self) -> Option<&Arc<dyn PhysicalExpr>> {
+        self.else_expr.as_ref()
     }
 }
 
@@ -2298,6 +2335,11 @@ impl CaseExpr {
 
 #[typetag::serde(name = "case_expr")]
 impl PhysicalExpr for CaseExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, input_schema: &Schema) -> Result<DataType> {
         self.when_then_expr[0].1.data_type(input_schema)
     }
@@ -2341,9 +2383,19 @@ pub struct CastExpr {
 }
 
 impl CastExpr {
-    /// Create a CastExpr
+    /// Create a new CastExpr
     pub fn new(expr: Arc<dyn PhysicalExpr>, cast_type: DataType) -> Self {
         Self { expr, cast_type }
+    }
+
+    /// The expression to cast
+    pub fn expr(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.expr
+    }
+
+    /// The data type to cast to
+    pub fn cast_type(&self) -> &DataType {
+        &self.cast_type
     }
 }
 
@@ -2380,6 +2432,11 @@ impl fmt::Display for CastExpr {
 
 #[typetag::serde(name = "cast_expr")]
 impl PhysicalExpr for CastExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.cast_type.clone())
     }
@@ -2418,7 +2475,7 @@ pub fn cast(
     if expr_type == cast_type {
         Ok(expr.clone())
     } else if can_cast_types(&expr_type, &cast_type) {
-        Ok(Arc::new(CastExpr { expr, cast_type }))
+        Ok(Arc::new(CastExpr::new(expr, cast_type)))
     } else {
         Err(DataFusionError::Internal(format!(
             "Unsupported CAST from {:?} to {:?}",
@@ -2438,6 +2495,11 @@ impl Literal {
     pub fn new(value: ScalarValue) -> Self {
         Self { value }
     }
+
+    /// Get the scalar value
+    pub fn value(&self) -> &ScalarValue {
+        &self.value
+    }
 }
 
 impl fmt::Display for Literal {
@@ -2448,6 +2510,11 @@ impl fmt::Display for Literal {
 
 #[typetag::serde(name = "literal")]
 impl PhysicalExpr for Literal {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
         Ok(self.value.get_datatype())
     }
@@ -2495,6 +2562,257 @@ impl PhysicalSortExpr {
     }
 }
 
+/// InList
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InListExpr {
+    expr: Arc<dyn PhysicalExpr>,
+    list: Vec<Arc<dyn PhysicalExpr>>,
+    negated: bool,
+}
+
+macro_rules! make_contains {
+    ($ARRAY:expr, $LIST_VALUES:expr, $NEGATED:expr, $SCALAR_VALUE:ident, $ARRAY_TYPE:ident) => {{
+        let array = $ARRAY.as_any().downcast_ref::<$ARRAY_TYPE>().unwrap();
+
+        let mut contains_null = false;
+        let values = $LIST_VALUES
+            .iter()
+            .flat_map(|expr| match expr {
+                ColumnarValue::Scalar(s) => match s {
+                    ScalarValue::$SCALAR_VALUE(Some(v)) => Some(*v),
+                    ScalarValue::$SCALAR_VALUE(None) => {
+                        contains_null = true;
+                        None
+                    }
+                    ScalarValue::Utf8(None) => {
+                        contains_null = true;
+                        None
+                    }
+                    datatype => unimplemented!("Unexpected type {} for InList", datatype),
+                },
+                ColumnarValue::Array(_) => {
+                    unimplemented!("InList does not yet support nested columns.")
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(ColumnarValue::Array(Arc::new(
+            array
+                .iter()
+                .map(|x| {
+                    let contains = x.map(|x| values.contains(&x));
+                    match contains {
+                        Some(true) => {
+                            if $NEGATED {
+                                Some(false)
+                            } else {
+                                Some(true)
+                            }
+                        }
+                        Some(false) => {
+                            if contains_null {
+                                None
+                            } else if $NEGATED {
+                                Some(true)
+                            } else {
+                                Some(false)
+                            }
+                        }
+                        None => None,
+                    }
+                })
+                .collect::<BooleanArray>(),
+        )))
+    }};
+}
+
+impl InListExpr {
+    /// Create a new InList expression
+    pub fn new(
+        expr: Arc<dyn PhysicalExpr>,
+        list: Vec<Arc<dyn PhysicalExpr>>,
+        negated: bool,
+    ) -> Self {
+        Self {
+            expr,
+            list,
+            negated,
+        }
+    }
+
+    /// Input expression
+    pub fn expr(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.expr
+    }
+
+    /// List to search in
+    pub fn list(&self) -> &[Arc<dyn PhysicalExpr>] {
+        &self.list
+    }
+
+    /// Is this negated e.g. NOT IN LIST
+    pub fn negated(&self) -> bool {
+        self.negated
+    }
+
+    /// Compare for specific utf8 types
+    fn compare_utf8<T: StringOffsetSizeTrait>(
+        &self,
+        array: ArrayRef,
+        list_values: Vec<ColumnarValue>,
+        negated: bool,
+    ) -> Result<ColumnarValue> {
+        let array = array
+            .as_any()
+            .downcast_ref::<GenericStringArray<T>>()
+            .unwrap();
+
+        let mut contains_null = false;
+        let values = list_values
+            .iter()
+            .flat_map(|expr| match expr {
+                ColumnarValue::Scalar(s) => match s {
+                    ScalarValue::Utf8(Some(v)) => Some(v.as_str()),
+                    ScalarValue::Utf8(None) => {
+                        contains_null = true;
+                        None
+                    }
+                    ScalarValue::LargeUtf8(Some(v)) => Some(v.as_str()),
+                    ScalarValue::LargeUtf8(None) => {
+                        contains_null = true;
+                        None
+                    }
+                    datatype => unimplemented!("Unexpected type {} for InList", datatype),
+                },
+                ColumnarValue::Array(_) => {
+                    unimplemented!("InList does not yet support nested columns.")
+                }
+            })
+            .collect::<Vec<&str>>();
+
+        Ok(ColumnarValue::Array(Arc::new(
+            array
+                .iter()
+                .map(|x| {
+                    let contains = x.map(|x| values.contains(&x));
+                    match contains {
+                        Some(true) => {
+                            if negated {
+                                Some(false)
+                            } else {
+                                Some(true)
+                            }
+                        }
+                        Some(false) => {
+                            if contains_null {
+                                None
+                            } else if negated {
+                                Some(true)
+                            } else {
+                                Some(false)
+                            }
+                        }
+                        None => None,
+                    }
+                })
+                .collect::<BooleanArray>(),
+        )))
+    }
+}
+
+impl fmt::Display for InListExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.negated {
+            write!(f, "{} NOT IN ({:?})", self.expr, self.list)
+        } else {
+            write!(f, "{} IN ({:?})", self.expr, self.list)
+        }
+    }
+}
+
+#[typetag::serde(name = "in_list_expr")]
+impl PhysicalExpr for InListExpr {
+    /// Return a reference to Any that can be used for downcasting
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn data_type(&self, _input_schema: &Schema) -> Result<DataType> {
+        Ok(DataType::Boolean)
+    }
+
+    fn nullable(&self, input_schema: &Schema) -> Result<bool> {
+        self.expr.nullable(input_schema)
+    }
+
+    fn evaluate(&self, batch: &RecordBatch) -> Result<ColumnarValue> {
+        let value = self.expr.evaluate(batch)?;
+        let value_data_type = value.data_type();
+        let list_values = self
+            .list
+            .iter()
+            .map(|expr| expr.evaluate(batch))
+            .collect::<Result<Vec<_>>>()?;
+
+        let array = match value {
+            ColumnarValue::Array(array) => array,
+            ColumnarValue::Scalar(scalar) => scalar.to_array(),
+        };
+
+        match value_data_type {
+            DataType::Float32 => {
+                make_contains!(array, list_values, self.negated, Float32, Float32Array)
+            }
+            DataType::Float64 => {
+                make_contains!(array, list_values, self.negated, Float64, Float64Array)
+            }
+            DataType::Int16 => {
+                make_contains!(array, list_values, self.negated, Int16, Int16Array)
+            }
+            DataType::Int32 => {
+                make_contains!(array, list_values, self.negated, Int32, Int32Array)
+            }
+            DataType::Int64 => {
+                make_contains!(array, list_values, self.negated, Int64, Int64Array)
+            }
+            DataType::Int8 => {
+                make_contains!(array, list_values, self.negated, Int8, Int8Array)
+            }
+            DataType::UInt16 => {
+                make_contains!(array, list_values, self.negated, UInt16, UInt16Array)
+            }
+            DataType::UInt32 => {
+                make_contains!(array, list_values, self.negated, UInt32, UInt32Array)
+            }
+            DataType::UInt64 => {
+                make_contains!(array, list_values, self.negated, UInt64, UInt64Array)
+            }
+            DataType::UInt8 => {
+                make_contains!(array, list_values, self.negated, UInt8, UInt8Array)
+            }
+            DataType::Boolean => {
+                make_contains!(array, list_values, self.negated, Boolean, BooleanArray)
+            }
+            DataType::Utf8 => self.compare_utf8::<i32>(array, list_values, self.negated),
+            DataType::LargeUtf8 => {
+                self.compare_utf8::<i64>(array, list_values, self.negated)
+            }
+            datatype => {
+                unimplemented!("InList does not support datatype {:?}.", datatype)
+            }
+        }
+    }
+}
+
+/// Creates a unary expression InList
+pub fn in_list(
+    expr: Arc<dyn PhysicalExpr>,
+    list: Vec<Arc<dyn PhysicalExpr>>,
+    negated: &bool,
+) -> Result<Arc<dyn PhysicalExpr>> {
+    Ok(Arc::new(InListExpr::new(expr, list, *negated)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2539,8 +2857,8 @@ mod tests {
             .as_any()
             .downcast_ref::<BooleanArray>()
             .expect("failed to downcast to BooleanArray");
-        for i in 0..5 {
-            assert_eq!(result.value(i), expected[i]);
+        for (i, &expected_item) in expected.iter().enumerate().take(5) {
+            assert_eq!(result.value(i), expected_item);
         }
 
         Ok(())
@@ -2573,8 +2891,8 @@ mod tests {
             .as_any()
             .downcast_ref::<BooleanArray>()
             .expect("failed to downcast to BooleanArray");
-        for i in 0..5 {
-            assert_eq!(result.value(i), expected[i]);
+        for (i, &expected_item) in expected.iter().enumerate().take(5) {
+            assert_eq!(result.value(i), expected_item);
         }
 
         Ok(())
@@ -3849,5 +4167,167 @@ mod tests {
         let a = StringArray::from(vec![Some("foo"), Some("baz"), None, Some("bar")]);
         let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a)])?;
         Ok(batch)
+    }
+
+    // applies the in_list expr to an input batch and list
+    macro_rules! in_list {
+        ($BATCH:expr, $LIST:expr, $NEGATED:expr, $EXPECTED:expr) => {{
+            let expr = in_list(col("a"), $LIST, $NEGATED).unwrap();
+            let result = expr.evaluate(&$BATCH)?.into_array($BATCH.num_rows());
+            let result = result
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .expect("failed to downcast to BooleanArray");
+            let expected = &BooleanArray::from($EXPECTED);
+            assert_eq!(expected, result);
+        }};
+    }
+
+    #[test]
+    fn in_list_utf8() -> Result<()> {
+        let schema = Schema::new(vec![Field::new("a", DataType::Utf8, true)]);
+        let a = StringArray::from(vec![Some("a"), Some("d"), None]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a)])?;
+
+        // expression: "a in ("a", "b")"
+        let list = vec![
+            lit(ScalarValue::Utf8(Some("a".to_string()))),
+            lit(ScalarValue::Utf8(Some("b".to_string()))),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), Some(false), None]);
+
+        // expression: "a not in ("a", "b")"
+        let list = vec![
+            lit(ScalarValue::Utf8(Some("a".to_string()))),
+            lit(ScalarValue::Utf8(Some("b".to_string()))),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), Some(true), None]);
+
+        // expression: "a not in ("a", "b")"
+        let list = vec![
+            lit(ScalarValue::Utf8(Some("a".to_string()))),
+            lit(ScalarValue::Utf8(Some("b".to_string()))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), None, None]);
+
+        // expression: "a not in ("a", "b")"
+        let list = vec![
+            lit(ScalarValue::Utf8(Some("a".to_string()))),
+            lit(ScalarValue::Utf8(Some("b".to_string()))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), None, None]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn in_list_int64() -> Result<()> {
+        let schema = Schema::new(vec![Field::new("a", DataType::Int64, true)]);
+        let a = Int64Array::from(vec![Some(0), Some(2), None]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a)])?;
+
+        // expression: "a in (0, 1)"
+        let list = vec![
+            lit(ScalarValue::Int64(Some(0))),
+            lit(ScalarValue::Int64(Some(1))),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), Some(false), None]);
+
+        // expression: "a not in (0, 1)"
+        let list = vec![
+            lit(ScalarValue::Int64(Some(0))),
+            lit(ScalarValue::Int64(Some(1))),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), Some(true), None]);
+
+        // expression: "a in (0, 1, NULL)"
+        let list = vec![
+            lit(ScalarValue::Int64(Some(0))),
+            lit(ScalarValue::Int64(Some(1))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), None, None]);
+
+        // expression: "a not in (0, 1, NULL)"
+        let list = vec![
+            lit(ScalarValue::Int64(Some(0))),
+            lit(ScalarValue::Int64(Some(1))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), None, None]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn in_list_float64() -> Result<()> {
+        let schema = Schema::new(vec![Field::new("a", DataType::Float64, true)]);
+        let a = Float64Array::from(vec![Some(0.0), Some(0.2), None]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a)])?;
+
+        // expression: "a in (0.0, 0.2)"
+        let list = vec![
+            lit(ScalarValue::Float64(Some(0.0))),
+            lit(ScalarValue::Float64(Some(0.1))),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), Some(false), None]);
+
+        // expression: "a not in (0.0, 0.2)"
+        let list = vec![
+            lit(ScalarValue::Float64(Some(0.0))),
+            lit(ScalarValue::Float64(Some(0.1))),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), Some(true), None]);
+
+        // expression: "a in (0.0, 0.2, NULL)"
+        let list = vec![
+            lit(ScalarValue::Float64(Some(0.0))),
+            lit(ScalarValue::Float64(Some(0.1))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), None, None]);
+
+        // expression: "a not in (0.0, 0.2, NULL)"
+        let list = vec![
+            lit(ScalarValue::Float64(Some(0.0))),
+            lit(ScalarValue::Float64(Some(0.1))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), None, None]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn in_list_bool() -> Result<()> {
+        let schema = Schema::new(vec![Field::new("a", DataType::Boolean, true)]);
+        let a = BooleanArray::from(vec![Some(true), None]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a)])?;
+
+        // expression: "a in (true)"
+        let list = vec![lit(ScalarValue::Boolean(Some(true)))];
+        in_list!(batch, list, &false, vec![Some(true), None]);
+
+        // expression: "a not in (true)"
+        let list = vec![lit(ScalarValue::Boolean(Some(true)))];
+        in_list!(batch, list, &true, vec![Some(false), None]);
+
+        // expression: "a in (true, NULL)"
+        let list = vec![
+            lit(ScalarValue::Boolean(Some(true))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &false, vec![Some(true), None]);
+
+        // expression: "a not in (true, NULL)"
+        let list = vec![
+            lit(ScalarValue::Boolean(Some(true))),
+            lit(ScalarValue::Utf8(None)),
+        ];
+        in_list!(batch, list, &true, vec![Some(false), None]);
+
+        Ok(())
     }
 }

@@ -58,17 +58,22 @@ impl CoalesceBatchesExec {
         }
     }
 
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
-    }
-
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<CoalesceBatchesExec> {
         Arc::new(CoalesceBatchesExec {
             input: Arc::new(DummyExec {}), 
             target_batch_size: self.target_batch_size
         })
+    }
+
+    /// The input plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
+    }
+
+    /// Minimum number of rows for coalesces batches
+    pub fn target_batch_size(&self) -> usize {
+        self.target_batch_size
     }
 }
 
@@ -211,7 +216,8 @@ impl RecordBatchStream for CoalesceBatchesStream {
     }
 }
 
-fn concat_batches(
+/// Concatenates an array of `RecordBatch` into one batch
+pub fn concat_batches(
     schema: &SchemaRef,
     batches: &[RecordBatch],
     row_count: usize,

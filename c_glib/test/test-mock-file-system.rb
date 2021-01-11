@@ -15,18 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: PR labeler
-on:
-  pull_request_target:
-    types: [opened, reopened]
+require_relative "file-system-tests"
 
-jobs:
-  assign-rust-labels:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Assign Github labels
-      uses: actions/labeler@2.2.0
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        configuration-path: .github/workflows/dev_labeler/labeler.yml
-        sync-labels: true
+class TestMockFileSystem < Test::Unit::TestCase
+  include FileSystemTests
+
+  def setup
+    @fs = Arrow::FileSystem.create("mock://")
+  end
+
+  def test_type_name
+    assert_equal("mock", @fs.type_name)
+  end
+end

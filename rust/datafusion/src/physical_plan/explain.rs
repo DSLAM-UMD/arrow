@@ -41,7 +41,6 @@ use serde::{Deserialize, Serialize};
 pub struct ExplainExec {
     /// The schema that this exec plan node outputs
     schema: SchemaRef,
-
     /// The strings to be printed
     stringified_plans: Vec<StringifiedPlan>,
 }
@@ -53,6 +52,11 @@ impl ExplainExec {
             schema,
             stringified_plans,
         }
+    }
+
+    /// The strings to be printed
+    pub fn stringified_plans(&self) -> &[StringifiedPlan] {
+        &self.stringified_plans
     }
 }
 

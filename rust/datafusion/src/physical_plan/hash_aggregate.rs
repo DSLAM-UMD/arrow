@@ -67,10 +67,15 @@ pub enum AggregateMode {
 /// Hash aggregate execution plan
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HashAggregateExec {
+    /// Aggregation mode (full, partial)
     mode: AggregateMode,
+    /// Grouping expressions
     group_expr: Vec<(Arc<dyn PhysicalExpr>, String)>,
+    /// Aggregate expressions
     aggr_expr: Vec<Arc<dyn AggregateExpr>>,
+    /// Input plan
     input: Arc<dyn ExecutionPlan>,
+    /// Schema after the aggregate is applied
     schema: SchemaRef,
 }
 
@@ -128,11 +133,6 @@ impl HashAggregateExec {
         })
     }
 
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
-    }
-
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<HashAggregateExec> {
         Arc::new(HashAggregateExec {
@@ -165,6 +165,26 @@ impl HashAggregateExec {
             input,
             schema,
         })
+    }
+
+    /// Aggregation mode (full, partial)
+    pub fn mode(&self) -> &AggregateMode {
+        &self.mode
+    }
+
+    /// Grouping expressions
+    pub fn group_expr(&self) -> &[(Arc<dyn PhysicalExpr>, String)] {
+        &self.group_expr
+    }
+
+    /// Aggregate expressions
+    pub fn aggr_expr(&self) -> &[Arc<dyn AggregateExpr>] {
+        &self.aggr_expr
+    }
+
+    /// Input plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
     }
 }
 

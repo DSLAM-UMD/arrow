@@ -67,11 +67,6 @@ impl FilterExec {
         }
     }
 
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
-    }
-
     /// Get new orphan of execution plan
     pub fn new_orphan(&self) -> Arc<FilterExec> {
         Arc::new(FilterExec {
@@ -95,6 +90,16 @@ impl FilterExec {
                 other
             ))),
         }
+    }
+
+    /// The expression to filter on. This expression must evaluate to a boolean value.
+    pub fn predicate(&self) -> &Arc<dyn PhysicalExpr> {
+        &self.predicate
+    }
+
+    /// The input plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
     }
 }
 

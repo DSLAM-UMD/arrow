@@ -38,7 +38,6 @@ use super::RecordBatchStream;
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::ExecutionPlan;
 use crate::physical_plan::Partitioning;
-use crate::physical_plan::dummy::DummyExec;
 
 use super::SendableRecordBatchStream;
 use pin_project_lite::pin_project;
@@ -59,9 +58,9 @@ impl MergeExec {
         MergeExec { input }
     }
 
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
+    /// Input execution plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
     }
 }
 

@@ -25,7 +25,6 @@ use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning};
-use crate::physical_plan::dummy::DummyExec;
 use arrow::datatypes::SchemaRef;
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
@@ -55,6 +54,18 @@ pub struct RepartitionExec {
     /// there is one entry in this Vec for each output partition
     #[serde(skip)]
     channels: Arc<Mutex<Vec<(Sender<MaybeBatch>, Receiver<MaybeBatch>)>>>,
+}
+
+impl RepartitionExec {
+    /// Input execution plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
+    }
+
+    /// Partitioning scheme to use
+    pub fn partitioning(&self) -> &Partitioning {
+        &self.partitioning
+    }
 }
 
 #[async_trait]
@@ -143,8 +154,8 @@ impl ExecutionPlan for RepartitionExec {
                     }
 
                     // notify each output partition that this input partition has no more data
-                    for i in 0..num_output_partitions {
-                        let tx = &mut channels[i].0;
+                    for channel in channels.iter_mut().take(num_output_partitions) {
+                        let tx = &mut channel.0;
                         tx.send(None)
                             .map_err(|e| DataFusionError::Execution(e.to_string()))?;
                     }
@@ -181,11 +192,6 @@ impl RepartitionExec {
                 other
             ))),
         }
-    }
-
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
     }
 }
 

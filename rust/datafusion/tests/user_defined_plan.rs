@@ -76,7 +76,7 @@ use datafusion::{
     physical_plan::{
         planner::{DefaultPhysicalPlanner, ExtensionPlanner},
         Distribution, ExecutionPlan, Partitioning, PhysicalPlanner, RecordBatchStream,
-        SendableRecordBatchStream, empty::DummyExec,
+        SendableRecordBatchStream,
     },
     prelude::{ExecutionConfig, ExecutionContext},
 };
@@ -353,13 +353,6 @@ struct TopKExec {
     input: Arc<dyn ExecutionPlan>,
     /// The maxium number of values
     k: usize,
-}
-
-impl TopKExec { 
-    /// Use DummyExec to split execution plan
-    pub fn split(&mut self) {
-        self.input = Arc::new(DummyExec {});
-    }
 }
 
 impl Debug for TopKExec {

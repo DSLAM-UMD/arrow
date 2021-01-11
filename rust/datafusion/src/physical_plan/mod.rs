@@ -134,7 +134,7 @@ pub enum Partitioning {
     RoundRobinBatch(usize),
     /// Allocate rows based on a hash of one of more expressions and the specified
     /// number of partitions
-    /// This partitioning scheme is not yet fully supported. See https://issues.apache.org/jira/browse/ARROW-11011
+    /// This partitioning scheme is not yet fully supported. See [ARROW-11011](https://issues.apache.org/jira/browse/ARROW-11011)
     Hash(Vec<Arc<dyn PhysicalExpr>>, usize),
     /// Unknown partitioning scheme with a known number of partitions
     UnknownPartitioning(usize),
@@ -189,6 +189,9 @@ impl ColumnarValue {
 /// A Physical expression knows its type, nullability and how to evaluate itself.
 #[typetag::serde(tag = "physical_expr")]
 pub trait PhysicalExpr: Send + Sync + Display + Debug {
+    /// Returns the physical expression as [`Any`](std::any::Any) so that it can be
+    /// downcast to a specific implementation.
+    fn as_any(&self) -> &dyn Any;
     /// Get the data type of this expression, given the schema of the input
     fn data_type(&self, input_schema: &Schema) -> Result<DataType>;
     /// Determine whether this expression is nullable, given the schema of the input

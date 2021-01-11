@@ -115,6 +115,16 @@ impl ProjectionExec {
             input,
         })
     }
+
+    /// The projection expressions stored as tuples of (expression, output column name)
+    pub fn expr(&self) -> &[(Arc<dyn PhysicalExpr>, String)] {
+        &self.expr
+    }
+
+    /// The input plan
+    pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
+        &self.input
+    }
 }
 
 #[async_trait]
