@@ -92,7 +92,7 @@ pub trait ExecutionPlan: Debug + Send + Sync {
 /// Partition-aware execution plan for a relation on AWS Lambda
 pub trait LambdaExecPlan: Debug + Send + Sync { 
     /// Feed record batches from other lambda function
-    fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>);
+    pub fn feed_batches(&mut self, partitions: Vec<Vec<RecordBatch>>);
 }
 
 /// Execute the [ExecutionPlan] and collect the results in memory
