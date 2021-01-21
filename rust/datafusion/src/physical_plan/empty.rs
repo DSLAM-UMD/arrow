@@ -23,6 +23,7 @@ use std::sync::Arc;
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::memory::MemoryStream;
 use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::LambdaExecPlan;
 use arrow::array::NullArray;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
@@ -124,6 +125,13 @@ impl ExecutionPlan for EmptyExec {
             self.schema.clone(),
             None,
         )?))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for EmptyExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

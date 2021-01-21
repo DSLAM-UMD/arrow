@@ -26,6 +26,7 @@ use std::task::{Context, Poll};
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::ExecutionPlan;
+use crate::physical_plan::LambdaExecPlan;
 use crate::physical_plan::{common, Partitioning};
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::{ArrowError, Result as ArrowResult};
@@ -296,6 +297,13 @@ impl ExecutionPlan for ParquetExec {
             schema: self.schema.clone(),
             response_rx,
         }))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for ParquetExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

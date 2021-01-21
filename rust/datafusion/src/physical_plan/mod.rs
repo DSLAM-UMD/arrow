@@ -62,7 +62,7 @@ pub trait PhysicalPlanner {
 /// Partition-aware execution plan for a relation
 #[async_trait]
 #[typetag::serde(tag = "execution_plan")]
-pub trait ExecutionPlan: Debug + Send + Sync {
+pub trait ExecutionPlan: Debug + Send + Sync + LambdaExecPlan {
     /// Returns the execution plan as [`Any`](std::any::Any) so that it can be
     /// downcast to a specific implementation.
     fn as_any(&self) -> &dyn Any;

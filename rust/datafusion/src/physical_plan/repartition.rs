@@ -25,6 +25,7 @@ use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning};
+use crate::physical_plan::LambdaExecPlan;
 use arrow::datatypes::SchemaRef;
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
@@ -172,6 +173,13 @@ impl ExecutionPlan for RepartitionExec {
             schema: self.input.schema(),
             input: channels[partition].1.clone(),
         }))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for RepartitionExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

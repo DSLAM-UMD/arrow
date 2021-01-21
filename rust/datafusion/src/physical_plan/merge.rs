@@ -38,6 +38,7 @@ use super::RecordBatchStream;
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::ExecutionPlan;
 use crate::physical_plan::Partitioning;
+use crate::physical_plan::LambdaExecPlan;
 
 use super::SendableRecordBatchStream;
 use pin_project_lite::pin_project;
@@ -153,6 +154,13 @@ impl ExecutionPlan for MergeExec {
                 }))
             }
         }
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for MergeExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

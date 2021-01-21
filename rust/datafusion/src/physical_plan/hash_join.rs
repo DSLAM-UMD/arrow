@@ -55,6 +55,7 @@ use crate::error::{DataFusionError, Result};
 
 use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream};
 use crate::physical_plan::coalesce_batches::concat_batches;
+use crate::physical_plan::LambdaExecPlan;
 use ahash::RandomState;
 use log::debug;
 
@@ -294,6 +295,13 @@ impl ExecutionPlan for HashJoinExec {
             num_output_rows: 0,
             join_time: 0,
         }))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for HashJoinExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 
