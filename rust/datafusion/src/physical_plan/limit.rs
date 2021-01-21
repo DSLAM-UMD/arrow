@@ -27,6 +27,7 @@ use futures::stream::StreamExt;
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::LambdaExecPlan;
 use arrow::array::ArrayRef;
 use arrow::compute::limit;
 use arrow::datatypes::SchemaRef;
@@ -133,6 +134,13 @@ impl ExecutionPlan for GlobalLimitExec {
     }
 }
 
+#[async_trait]
+impl LambdaExecPlan for GlobalLimitExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
+    }
+}
+
 /// LocalLimitExec applies a limit to a single partition
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalLimitExec {
@@ -197,6 +205,13 @@ impl ExecutionPlan for LocalLimitExec {
     async fn execute(&self, _: usize) -> Result<SendableRecordBatchStream> {
         let stream = self.input.execute(0).await?;
         Ok(Box::pin(LimitStream::new(stream, self.limit)))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for LocalLimitExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

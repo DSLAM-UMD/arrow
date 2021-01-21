@@ -38,6 +38,7 @@ use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::expressions::PhysicalSortExpr;
 use crate::physical_plan::{common, Distribution, ExecutionPlan, Partitioning};
+use crate::physical_plan::LambdaExecPlan;
 
 use async_trait::async_trait;
 
@@ -137,6 +138,13 @@ impl ExecutionPlan for SortExec {
         let input = self.input.execute(0).await?;
 
         Ok(Box::pin(SortStream::new(input, self.expr.clone())))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for SortExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

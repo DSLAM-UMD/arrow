@@ -25,6 +25,7 @@ use crate::{
     logical_plan::StringifiedPlan,
     physical_plan::{common::SizedRecordBatchStream, ExecutionPlan},
 };
+use crate::physical_plan::LambdaExecPlan;
 use arrow::{array::StringBuilder, datatypes::SchemaRef, record_batch::RecordBatch};
 
 use crate::physical_plan::Partitioning;
@@ -124,5 +125,12 @@ impl ExecutionPlan for ExplainExec {
             self.schema.clone(),
             vec![Arc::new(record_batch)],
         )))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for ExplainExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }

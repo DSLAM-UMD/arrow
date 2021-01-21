@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use super::{ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream};
+use crate::physical_plan::LambdaExecPlan;
 use crate::error::{DataFusionError, Result};
 use arrow::datatypes::SchemaRef;
 use arrow::error::Result as ArrowResult;
@@ -84,6 +85,13 @@ impl ExecutionPlan for MemoryExec {
             self.schema.clone(),
             self.projection.clone(),
         )?))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for MemoryExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

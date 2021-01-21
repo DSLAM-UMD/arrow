@@ -21,9 +21,9 @@ use std::any::Any;
 use std::sync::Arc;
 
 use crate::error::{DataFusionError, Result};
-use crate::physical_plan::{ExecutionPlan, Partitioning};
+use crate::physical_plan::{ExecutionPlan, LambdaExecPlan, Partitioning};
 use arrow::datatypes::{Schema, SchemaRef};
-
+use arrow::record_batch::RecordBatch;
 use super::SendableRecordBatchStream;
 
 use async_trait::async_trait;
@@ -70,5 +70,12 @@ impl ExecutionPlan for DummyExec {
         Err(DataFusionError::Internal(
             "DummyExec invalid partition".to_string(),
         ))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for DummyExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }

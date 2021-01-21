@@ -26,6 +26,7 @@ use std::task::{Context, Poll};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::ExecutionPlan;
 use crate::physical_plan::{common, Partitioning};
+use crate::physical_plan::LambdaExecPlan;
 use arrow::csv;
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::Result as ArrowResult;
@@ -265,6 +266,13 @@ impl ExecutionPlan for CsvExec {
             &self.projection,
             self.batch_size,
         )?))
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for CsvExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 
