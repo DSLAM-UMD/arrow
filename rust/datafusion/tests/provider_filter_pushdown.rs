@@ -59,6 +59,10 @@ impl ExecutionPlan for CustomPlan {
         self
     }
 
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn schema(&self) -> SchemaRef {
         self.schema.clone()
     }

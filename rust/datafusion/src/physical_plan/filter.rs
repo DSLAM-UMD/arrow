@@ -110,6 +110,10 @@ impl ExecutionPlan for FilterExec {
         self
     }
 
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     /// Get the schema for this execution plan
     fn schema(&self) -> SchemaRef {
         // The filter operator does not make any changes to the schema of its input

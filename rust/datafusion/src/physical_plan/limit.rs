@@ -80,6 +80,10 @@ impl ExecutionPlan for GlobalLimitExec {
         self
     }
 
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn schema(&self) -> SchemaRef {
         self.input.schema()
     }
@@ -172,6 +176,10 @@ impl LocalLimitExec {
 impl ExecutionPlan for LocalLimitExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
         self
     }
 
