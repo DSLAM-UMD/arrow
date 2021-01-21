@@ -101,6 +101,10 @@ impl ExecutionPlan for CoalesceBatchesExec {
         self
     }
 
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     /// Get the schema for this execution plan
     fn schema(&self) -> SchemaRef {
         // The coalesce batches operator does not make any changes to the schema of its input

@@ -88,6 +88,10 @@ impl ExecutionPlan for SortExec {
         self
     }
 
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn schema(&self) -> SchemaRef {
         self.input.schema()
     }

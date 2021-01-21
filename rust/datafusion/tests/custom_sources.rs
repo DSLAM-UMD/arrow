@@ -98,6 +98,11 @@ impl ExecutionPlan for CustomExecutionPlan {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn schema(&self) -> SchemaRef {
         let schema = TEST_CUSTOM_SCHEMA_REF!();
         match &self.projection {

@@ -66,6 +66,8 @@ pub trait ExecutionPlan: Debug + Send + Sync + LambdaExecPlan {
     /// Returns the execution plan as [`Any`](std::any::Any) so that it can be
     /// downcast to a specific implementation.
     fn as_any(&self) -> &dyn Any;
+    /// Return the value as an mutable Any to allow for downcasts without transmutation
+    fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
     /// Get the schema for this execution plan
     fn schema(&self) -> SchemaRef;
     /// Specifies the output partitioning scheme of this plan
