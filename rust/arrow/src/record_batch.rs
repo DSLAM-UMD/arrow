@@ -95,7 +95,7 @@ impl RecordBatch {
 
     /// Validate the schema and columns using [`RecordBatchOptions`]. Returns an error
     /// if any validation check fails.
-    fn validate_new_batch(
+    pub fn validate_new_batch(
         schema: &SchemaRef,
         columns: &[ArrayRef],
         options: &RecordBatchOptions,
