@@ -114,8 +114,9 @@ impl MemoryExec {
     }
 
     /// Set the partitions
-    pub fn set_partitions(&mut self, partitions: Vec<Vec<RecordBatch>>) {
-        self.partitions = partitions;
+    pub fn set_partitions_and_schema(&mut self, partitions: &Vec<Vec<RecordBatch>>, schema: SchemaRef) {
+        self.partitions = partitions.clone();
+        self.schema = schema;
     }
 
     /// Get the projection
