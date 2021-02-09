@@ -22,7 +22,7 @@ use super::{binary_expr, Expr};
 use serde::{Deserialize, Serialize};
 
 /// Operators applied to expressions
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Operator {
     /// Expressions are equal
     Eq,

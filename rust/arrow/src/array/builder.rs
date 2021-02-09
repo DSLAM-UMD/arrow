@@ -47,7 +47,7 @@ pub(crate) fn mutable_buffer_to_builder<T: ArrowNativeType>(
     }
 }
 
-///  Converts a `BufferBuilder<T>` into it's underlying `MutableBuffer`.
+///  Converts a `BufferBuilder<T>` into its underlying `MutableBuffer`.
 ///
 /// `From` is not implemented because associated type bounds are unstable.
 pub(crate) fn builder_to_mutable_buffer<T: ArrowNativeType>(
@@ -180,7 +180,7 @@ impl<T: ArrowNativeType> BufferBuilder<T> {
     #[inline]
     pub fn advance(&mut self, i: usize) {
         let new_buffer_len = (self.len + i) * mem::size_of::<T>();
-        self.buffer.resize(new_buffer_len);
+        self.buffer.resize(new_buffer_len, 0);
         self.len += i;
     }
 
@@ -198,9 +198,7 @@ impl<T: ArrowNativeType> BufferBuilder<T> {
     /// ```
     #[inline]
     pub fn reserve(&mut self, n: usize) {
-        let new_capacity = self.len + n;
-        let byte_capacity = mem::size_of::<T>() * new_capacity;
-        self.buffer.reserve(byte_capacity);
+        self.buffer.reserve(n * mem::size_of::<T>());
     }
 
     /// Appends a value of type `T` into the builder,
@@ -219,12 +217,8 @@ impl<T: ArrowNativeType> BufferBuilder<T> {
     #[inline]
     pub fn append(&mut self, v: T) {
         self.reserve(1);
-        self.write_bytes(v.to_byte_slice(), 1);
-    }
-
-    fn write_bytes(&mut self, bytes: &[u8], len_added: usize) {
-        self.buffer.extend_from_slice(bytes);
-        self.len += len_added;
+        self.buffer.push(v);
+        self.len += 1;
     }
 
     /// Appends a value of type `T` into the builder N times,
@@ -244,8 +238,9 @@ impl<T: ArrowNativeType> BufferBuilder<T> {
     pub fn append_n(&mut self, n: usize, v: T) {
         self.reserve(n);
         for _ in 0..n {
-            self.write_bytes(v.to_byte_slice(), 1);
+            self.buffer.push(v);
         }
+        self.len += n;
     }
 
     /// Appends a slice of type `T`, growing the internal buffer as needed.
@@ -262,10 +257,8 @@ impl<T: ArrowNativeType> BufferBuilder<T> {
     /// ```
     #[inline]
     pub fn append_slice(&mut self, slice: &[T]) {
-        let array_slots = slice.len();
-        self.reserve(array_slots);
-
-        self.write_bytes(slice.to_byte_slice(), array_slots);
+        self.buffer.extend_from_slice(slice);
+        self.len += slice.len();
     }
 
     /// Resets this builder and returns an immutable [`Buffer`](crate::buffer::Buffer).
@@ -300,101 +293,92 @@ impl BooleanBufferBuilder {
     #[inline]
     pub fn new(capacity: usize) -> Self {
         let byte_capacity = bit_util::ceil(capacity, 8);
-        let actual_capacity = bit_util::round_upto_multiple_of_64(byte_capacity);
-        let mut buffer = MutableBuffer::new(actual_capacity);
-        buffer.set_null_bits(0, actual_capacity);
-
+        let buffer = MutableBuffer::from_len_zeroed(byte_capacity);
         Self { buffer, len: 0 }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.buffer.capacity() * 8
     }
 
     #[inline]
-    pub fn advance(&mut self, i: usize) {
-        let new_buffer_len = bit_util::ceil(self.len + i, 8);
-        self.buffer.resize(new_buffer_len);
-        self.len += i;
+    pub fn advance(&mut self, additional: usize) {
+        let new_len = self.len + additional;
+        let new_len_bytes = bit_util::ceil(new_len, 8);
+        if new_len_bytes > self.buffer.len() {
+            self.buffer.resize(new_len_bytes, 0);
+        }
+        self.len = new_len;
     }
 
+    /// Reserve space to at least `additional` new bits.
+    /// Capacity will be `>= self.len() + additional`.
+    /// New bytes are uninitialized and reading them is undefined behavior.
     #[inline]
-    pub fn reserve(&mut self, n: usize) {
-        let new_capacity = self.len + n;
-        if new_capacity > self.capacity() {
-            let new_byte_capacity = bit_util::ceil(new_capacity, 8);
-            let existing_capacity = self.buffer.capacity();
-            let new_capacity = self.buffer.reserve(new_byte_capacity);
-            self.buffer
-                .set_null_bits(existing_capacity, new_capacity - existing_capacity);
+    pub fn reserve(&mut self, additional: usize) {
+        let capacity = self.len + additional;
+        if capacity > self.capacity() {
+            // convert differential to bytes
+            let additional = bit_util::ceil(capacity, 8) - self.buffer.len();
+            self.buffer.reserve(additional);
         }
     }
 
     #[inline]
     pub fn append(&mut self, v: bool) {
-        self.reserve(1);
+        self.advance(1);
         if v {
-            let data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    self.buffer.as_mut_ptr(),
-                    self.buffer.capacity(),
-                )
-            };
-            bit_util::set_bit(data, self.len);
+            unsafe { bit_util::set_bit_raw(self.buffer.as_mut_ptr(), self.len - 1) };
         }
-        self.len += 1;
     }
 
     #[inline]
-    pub fn append_n(&mut self, n: usize, v: bool) {
-        self.reserve(n);
-        if n != 0 && v {
-            let data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    self.buffer.as_mut_ptr(),
-                    self.buffer.capacity(),
-                )
-            };
-            (self.len..self.len + n).for_each(|i| bit_util::set_bit(data, i))
+    pub fn append_n(&mut self, additional: usize, v: bool) {
+        self.advance(additional);
+        if additional > 0 && v {
+            let offset = self.len() - additional;
+            (0..additional).for_each(|i| unsafe {
+                bit_util::set_bit_raw(self.buffer.as_mut_ptr(), offset + i)
+            })
         }
-        self.len += n;
     }
 
     #[inline]
     pub fn append_slice(&mut self, slice: &[bool]) {
-        let array_slots = slice.len();
-        self.reserve(array_slots);
+        let additional = slice.len();
+        self.advance(additional);
 
-        for v in slice {
+        let offset = self.len() - additional;
+        for (i, v) in slice.iter().enumerate() {
             if *v {
-                // For performance the `len` of the buffer is not
-                // updated on each append but is updated in the
-                // `into` method instead.
-                unsafe {
-                    bit_util::set_bit_raw(self.buffer.as_mut_ptr(), self.len);
-                }
+                unsafe { bit_util::set_bit_raw(self.buffer.as_mut_ptr(), offset + i) }
             }
-            self.len += 1;
         }
     }
 
     #[inline]
     pub fn finish(&mut self) -> Buffer {
-        // `append` does not update the buffer's `len` so do it before `into` is called.
-        let new_buffer_len = bit_util::ceil(self.len, 8);
-        debug_assert!(new_buffer_len >= self.buffer.len());
-        let mut buf = std::mem::replace(&mut self.buffer, MutableBuffer::new(0));
+        let buf = std::mem::replace(&mut self.buffer, MutableBuffer::new(0));
         self.len = 0;
-        buf.resize(new_buffer_len);
         buf.into()
+    }
+}
+
+impl From<BooleanBufferBuilder> for Buffer {
+    #[inline]
+    fn from(builder: BooleanBufferBuilder) -> Self {
+        builder.buffer.into()
     }
 }
 
@@ -1282,7 +1266,6 @@ impl DecimalBuilder {
 /// properly called to maintain the consistency of the data structure.
 pub struct StructBuilder {
     fields: Vec<Field>,
-    field_anys: Vec<Box<Any>>,
     field_builders: Vec<Box<ArrayBuilder>>,
     bitmap_builder: BooleanBufferBuilder,
     len: usize,
@@ -1292,7 +1275,6 @@ impl fmt::Debug for StructBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StructBuilder")
             .field("fields", &self.fields)
-            .field("field_anys", &self.field_anys)
             .field("bitmap_builder", &self.bitmap_builder)
             .field("len", &self.len)
             .finish()
@@ -1368,8 +1350,8 @@ pub fn make_builder(datatype: &DataType, capacity: usize) -> Box<ArrayBuilder> {
             Box::new(DecimalBuilder::new(capacity, *precision, *scale))
         }
         DataType::Utf8 => Box::new(StringBuilder::new(capacity)),
-        DataType::Date32(DateUnit::Day) => Box::new(Date32Builder::new(capacity)),
-        DataType::Date64(DateUnit::Millisecond) => Box::new(Date64Builder::new(capacity)),
+        DataType::Date32 => Box::new(Date32Builder::new(capacity)),
+        DataType::Date64 => Box::new(Date64Builder::new(capacity)),
         DataType::Time32(TimeUnit::Second) => {
             Box::new(Time32SecondBuilder::new(capacity))
         }
@@ -1420,25 +1402,9 @@ pub fn make_builder(datatype: &DataType, capacity: usize) -> Box<ArrayBuilder> {
 }
 
 impl StructBuilder {
-    pub fn new(fields: Vec<Field>, builders: Vec<Box<ArrayBuilder>>) -> Self {
-        let mut field_anys = Vec::with_capacity(builders.len());
-        let mut field_builders = Vec::with_capacity(builders.len());
-
-        // Create and maintain two references for each of the input builder. We need the
-        // extra `Any` reference because we need to cast the builder to a specific type
-        // in `field_builder()` by calling `downcast_mut`.
-        for f in builders.into_iter() {
-            let raw_f = Box::into_raw(f);
-            let raw_f_copy = raw_f;
-            unsafe {
-                field_anys.push(Box::from_raw(raw_f).into_box_any());
-                field_builders.push(Box::from_raw(raw_f_copy));
-            }
-        }
-
+    pub fn new(fields: Vec<Field>, field_builders: Vec<Box<ArrayBuilder>>) -> Self {
         Self {
             fields,
-            field_anys,
             field_builders,
             bitmap_builder: BooleanBufferBuilder::new(0),
             len: 0,
@@ -1457,7 +1423,7 @@ impl StructBuilder {
     /// Result will be `None` if the input type `T` provided doesn't match the actual
     /// field builder's type.
     pub fn field_builder<T: ArrayBuilder>(&mut self, i: usize) -> Option<&mut T> {
-        self.field_anys[i].downcast_mut::<T>()
+        self.field_builders[i].as_any_mut().downcast_mut::<T>()
     }
 
     /// Returns the number of fields for the struct this builder is building.
@@ -1498,14 +1464,6 @@ impl StructBuilder {
         self.len = 0;
 
         StructArray::from(builder.build())
-    }
-}
-
-impl Drop for StructBuilder {
-    fn drop(&mut self) {
-        // To avoid double drop on the field array builders.
-        let builders = std::mem::replace(&mut self.field_builders, Vec::new());
-        std::mem::forget(builders);
     }
 }
 
@@ -1595,14 +1553,14 @@ impl FieldData {
             DataType::Int8 => self.append_null::<Int8Type>()?,
             DataType::Int16 => self.append_null::<Int16Type>()?,
             DataType::Int32
-            | DataType::Date32(_)
+            | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(IntervalUnit::YearMonth) => {
                 self.append_null::<Int32Type>()?
             }
             DataType::Int64
             | DataType::Timestamp(_, _)
-            | DataType::Date64(_)
+            | DataType::Date64
             | DataType::Time64(_)
             | DataType::Interval(IntervalUnit::DayTime)
             | DataType::Duration(_) => self.append_null::<Int64Type>()?,
@@ -1880,9 +1838,47 @@ where
     }
 }
 
-/// Array builder for `DictionaryArray`. For example to map a set of byte indices
-/// to f32 values. Note that the use of a `HashMap` here will not scale to very large
+/// Array builder for `DictionaryArray` that stores Strings. For example to map a set of byte indices
+/// to String values. Note that the use of a `HashMap` here will not scale to very large
 /// arrays or result in an ordered dictionary.
+///
+/// ```
+/// use arrow::{
+///   array::{
+///     Int8Array, StringArray,
+///     PrimitiveBuilder, StringBuilder, StringDictionaryBuilder,
+///   },
+///   datatypes::Int8Type,
+/// };
+///
+/// // Create a dictionary array indexed by bytes whose values are Strings.
+/// // It can thus hold up to 256 distinct string values.
+///
+/// let key_builder = PrimitiveBuilder::<Int8Type>::new(100);
+/// let value_builder = StringBuilder::new(100);
+/// let mut builder = StringDictionaryBuilder::new(key_builder, value_builder);
+///
+/// // The builder builds the dictionary value by value
+/// builder.append("abc").unwrap();
+/// builder.append_null().unwrap();
+/// builder.append("def").unwrap();
+/// builder.append("def").unwrap();
+/// builder.append("abc").unwrap();
+/// let array = builder.finish();
+///
+/// assert_eq!(
+///   array.keys(),
+///   &Int8Array::from(vec![Some(0), None, Some(1), Some(1), Some(0)])
+/// );
+///
+/// // Values are polymorphic and so require a downcast.
+/// let av = array.values();
+/// let ava: &StringArray = av.as_any().downcast_ref::<StringArray>().unwrap();
+///
+/// assert_eq!(ava.value(0), "abc");
+/// assert_eq!(ava.value(1), "def");
+///
+/// ```
 #[derive(Debug)]
 pub struct StringDictionaryBuilder<K>
 where
@@ -2175,17 +2171,6 @@ mod tests {
     }
 
     #[test]
-    fn test_write_bytes_i32() {
-        let mut b = Int32BufferBuilder::new(4);
-        let bytes = [8, 16, 32, 64].to_byte_slice();
-        b.write_bytes(bytes, 4);
-        assert_eq!(4, b.len());
-        assert_eq!(16, b.capacity());
-        let buffer = b.finish();
-        assert_eq!(16, buffer.len());
-    }
-
-    #[test]
     fn test_boolean_array_builder_append_slice() {
         let arr1 =
             BooleanArray::from(vec![Some(true), Some(false), None, None, Some(false)]);
@@ -2197,16 +2182,18 @@ mod tests {
         builder.append_value(false).unwrap();
         let arr2 = builder.finish();
 
-        assert_eq!(arr1.len(), arr2.len());
-        assert_eq!(arr1.offset(), arr2.offset());
-        assert_eq!(arr1.null_count(), arr2.null_count());
-        for i in 0..5 {
-            assert_eq!(arr1.is_null(i), arr2.is_null(i));
-            assert_eq!(arr1.is_valid(i), arr2.is_valid(i));
-            if arr1.is_valid(i) {
-                assert_eq!(arr1.value(i), arr2.value(i));
-            }
-        }
+        assert_eq!(arr1, arr2);
+    }
+
+    #[test]
+    fn test_boolean_array_builder_append_slice_large() {
+        let arr1 = BooleanArray::from(vec![true; 513]);
+
+        let mut builder = BooleanArray::builder(512);
+        builder.append_slice(&[true; 513]).unwrap();
+        let arr2 = builder.finish();
+
+        assert_eq!(arr1, arr2);
     }
 
     #[test]
@@ -2215,7 +2202,7 @@ mod tests {
         let buf = Buffer::from([72_u8, 2_u8]);
         let mut builder = BooleanBufferBuilder::new(8);
 
-        for i in 0..10 {
+        for i in 0..16 {
             if i == 3 || i == 6 || i == 9 {
                 builder.append(true);
             } else {
@@ -2409,18 +2396,15 @@ mod tests {
         let list_array = builder.finish();
 
         let values = list_array.values().data().buffers()[0].clone();
+        assert_eq!(Buffer::from_slice_ref(&[0, 1, 2, 3, 4, 5, 6, 7]), values);
         assert_eq!(
-            Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()),
-            values
-        );
-        assert_eq!(
-            Buffer::from(&[0, 3, 6, 8].to_byte_slice()),
+            Buffer::from_slice_ref(&[0, 3, 6, 8]),
             list_array.data().buffers()[0].clone()
         );
         assert_eq!(DataType::Int32, list_array.value_type());
         assert_eq!(3, list_array.len());
         assert_eq!(0, list_array.null_count());
-        assert_eq!(6, list_array.value_offset(2));
+        assert_eq!(6, list_array.value_offsets()[2]);
         assert_eq!(2, list_array.value_length(2));
         for i in 0..3 {
             assert!(list_array.is_valid(i));
@@ -2448,18 +2432,15 @@ mod tests {
         let list_array = builder.finish();
 
         let values = list_array.values().data().buffers()[0].clone();
+        assert_eq!(Buffer::from_slice_ref(&[0, 1, 2, 3, 4, 5, 6, 7]), values);
         assert_eq!(
-            Buffer::from(&[0, 1, 2, 3, 4, 5, 6, 7].to_byte_slice()),
-            values
-        );
-        assert_eq!(
-            Buffer::from(&[0i64, 3, 6, 8].to_byte_slice()),
+            Buffer::from_slice_ref(&[0i64, 3, 6, 8]),
             list_array.data().buffers()[0].clone()
         );
         assert_eq!(DataType::Int32, list_array.value_type());
         assert_eq!(3, list_array.len());
         assert_eq!(0, list_array.null_count());
-        assert_eq!(6, list_array.value_offset(2));
+        assert_eq!(6, list_array.value_offsets()[2]);
         assert_eq!(2, list_array.value_length(2));
         for i in 0..3 {
             assert!(list_array.is_valid(i));
@@ -2490,7 +2471,7 @@ mod tests {
         assert_eq!(DataType::Int32, list_array.value_type());
         assert_eq!(4, list_array.len());
         assert_eq!(1, list_array.null_count());
-        assert_eq!(3, list_array.value_offset(2));
+        assert_eq!(3, list_array.value_offsets()[2]);
         assert_eq!(3, list_array.value_length(2));
     }
 
@@ -2517,7 +2498,7 @@ mod tests {
         assert_eq!(DataType::Int32, list_array.value_type());
         assert_eq!(4, list_array.len());
         assert_eq!(1, list_array.null_count());
-        assert_eq!(3, list_array.value_offset(2));
+        assert_eq!(3, list_array.value_offsets()[2]);
         assert_eq!(3, list_array.value_length(2));
     }
 
@@ -2640,21 +2621,21 @@ mod tests {
         assert_eq!(4, list_array.len());
         assert_eq!(1, list_array.null_count());
         assert_eq!(
-            Buffer::from(&[0, 2, 5, 5, 6].to_byte_slice()),
+            Buffer::from_slice_ref(&[0, 2, 5, 5, 6]),
             list_array.data().buffers()[0].clone()
         );
 
         assert_eq!(6, list_array.values().data().len());
         assert_eq!(1, list_array.values().data().null_count());
         assert_eq!(
-            Buffer::from(&[0, 2, 4, 7, 7, 8, 10].to_byte_slice()),
+            Buffer::from_slice_ref(&[0, 2, 4, 7, 7, 8, 10]),
             list_array.values().data().buffers()[0].clone()
         );
 
         assert_eq!(10, list_array.values().data().child_data()[0].len());
         assert_eq!(0, list_array.values().data().child_data()[0].null_count());
         assert_eq!(
-            Buffer::from(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].to_byte_slice()),
+            Buffer::from_slice_ref(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
             list_array.values().data().child_data()[0].buffers()[0].clone()
         );
     }
@@ -2684,7 +2665,7 @@ mod tests {
         assert_eq!([b'h', b'e', b'l', b'l', b'o'], binary_array.value(0));
         assert_eq!([] as [u8; 0], binary_array.value(1));
         assert_eq!([b'w', b'o', b'r', b'l', b'd'], binary_array.value(2));
-        assert_eq!(5, binary_array.value_offset(2));
+        assert_eq!(5, binary_array.value_offsets()[2]);
         assert_eq!(5, binary_array.value_length(2));
     }
 
@@ -2713,7 +2694,7 @@ mod tests {
         assert_eq!([b'h', b'e', b'l', b'l', b'o'], binary_array.value(0));
         assert_eq!([] as [u8; 0], binary_array.value(1));
         assert_eq!([b'w', b'o', b'r', b'l', b'd'], binary_array.value(2));
-        assert_eq!(5, binary_array.value_offset(2));
+        assert_eq!(5, binary_array.value_offsets()[2]);
         assert_eq!(5, binary_array.value_length(2));
     }
 
@@ -2732,7 +2713,7 @@ mod tests {
         assert_eq!("hello", string_array.value(0));
         assert_eq!("", string_array.value(1));
         assert_eq!("world", string_array.value(2));
-        assert_eq!(5, string_array.value_offset(2));
+        assert_eq!(5, string_array.value_offsets()[2]);
         assert_eq!(5, string_array.value_length(2));
     }
 
@@ -2805,7 +2786,7 @@ mod tests {
         assert_eq!("hello", string_array.value(0));
         assert_eq!("", string_array.value(1));
         assert_eq!("world", string_array.value(2));
-        assert_eq!(5, string_array.value_offset(2));
+        assert_eq!(5, string_array.value_offsets()[2]);
         assert_eq!(5, string_array.value_length(2));
     }
 
@@ -2858,14 +2839,14 @@ mod tests {
         let expected_string_data = ArrayData::builder(DataType::Utf8)
             .len(4)
             .null_bit_buffer(Buffer::from(&[9_u8]))
-            .add_buffer(Buffer::from(&[0, 3, 3, 3, 7].to_byte_slice()))
-            .add_buffer(Buffer::from(b"joemark"))
+            .add_buffer(Buffer::from_slice_ref(&[0, 3, 3, 3, 7]))
+            .add_buffer(Buffer::from_slice_ref(b"joemark"))
             .build();
 
         let expected_int_data = ArrayData::builder(DataType::Int32)
             .len(4)
-            .null_bit_buffer(Buffer::from(&[11_u8]))
-            .add_buffer(Buffer::from(&[1, 2, 0, 4].to_byte_slice()))
+            .null_bit_buffer(Buffer::from_slice_ref(&[11_u8]))
+            .add_buffer(Buffer::from_slice_ref(&[1, 2, 0, 4]))
             .build();
 
         assert_eq!(expected_string_data, arr.column(0).data());

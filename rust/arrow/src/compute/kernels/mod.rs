@@ -19,6 +19,7 @@
 
 pub mod aggregate;
 pub mod arithmetic;
+pub mod arity;
 pub mod boolean;
 pub mod cast;
 pub mod comparison;
@@ -30,3 +31,5 @@ pub mod sort;
 pub mod substring;
 pub mod take;
 pub mod temporal;
+pub mod window;
+pub mod zip;

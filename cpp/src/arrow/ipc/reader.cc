@@ -49,6 +49,7 @@
 #include "arrow/util/key_value_metadata.h"
 #include "arrow/util/logging.h"
 #include "arrow/util/parallel.h"
+#include "arrow/util/string.h"
 #include "arrow/util/ubsan.h"
 #include "arrow/visitor_inline.h"
 
@@ -535,8 +536,9 @@ Status GetCompressionExperimental(const flatbuf::Message* message,
     RETURN_NOT_OK(internal::GetKeyValueMetadata(message->custom_metadata(), &metadata));
     int index = metadata->FindKey("ARROW:experimental_compression");
     if (index != -1) {
-      ARROW_ASSIGN_OR_RAISE(*out,
-                            util::Codec::GetCompressionType(metadata->value(index)));
+      // Arrow 0.17 stored string in upper case, internal utils now require lower case
+      auto name = arrow::internal::AsciiToLower(metadata->value(index));
+      ARROW_ASSIGN_OR_RAISE(*out, util::Codec::GetCompressionType(name));
     }
     return internal::CheckCompressionSupported(*out);
   }
@@ -1051,7 +1053,9 @@ class RecordBatchFileReaderImpl : public RecordBatchFileReader {
         file_->ReadAt(footer_offset_ - footer_length - file_end_size, footer_length));
 
     auto data = footer_buffer_->data();
-    flatbuffers::Verifier verifier(data, footer_buffer_->size(), 128);
+    flatbuffers::Verifier verifier(data, footer_buffer_->size(), /*max_depth=*/128,
+                                   /*max_tables=*/UINT_MAX);
+
     if (!flatbuf::VerifyFooterBuffer(verifier)) {
       return Status::IOError("Verification of flatbuffer-encoded Footer failed.");
     }
@@ -1740,6 +1744,23 @@ Status FuzzIpcFile(const uint8_t* data, int64_t size) {
   for (int i = 0; i < n_batches; ++i) {
     ARROW_ASSIGN_OR_RAISE(auto batch, batch_reader->ReadRecordBatch(i));
     RETURN_NOT_OK(batch->ValidateFull());
+  }
+
+  return Status::OK();
+}
+
+Status FuzzIpcTensorStream(const uint8_t* data, int64_t size) {
+  auto buffer = std::make_shared<Buffer>(data, size);
+  io::BufferReader buffer_reader(buffer);
+
+  std::shared_ptr<Tensor> tensor;
+
+  while (true) {
+    ARROW_ASSIGN_OR_RAISE(tensor, ReadTensor(&buffer_reader));
+    if (tensor == nullptr) {
+      break;
+    }
+    RETURN_NOT_OK(tensor->Validate());
   }
 
   return Status::OK();

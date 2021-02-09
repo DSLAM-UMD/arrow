@@ -441,6 +441,24 @@ def test_expression_construction():
         field != {1}
 
 
+def test_expression_boolean_operators():
+    # https://issues.apache.org/jira/browse/ARROW-11412
+    true = ds.scalar(True)
+    false = ds.scalar(False)
+
+    with pytest.raises(ValueError, match="cannot be evaluated to python True"):
+        true and false
+
+    with pytest.raises(ValueError, match="cannot be evaluated to python True"):
+        true or false
+
+    with pytest.raises(ValueError, match="cannot be evaluated to python True"):
+        bool(true)
+
+    with pytest.raises(ValueError, match="cannot be evaluated to python True"):
+        not true
+
+
 def test_partition_keys():
     a, b, c = [ds.field(f) == f for f in 'abc']
     assert ds._get_partition_keys(a) == {'a': 'a'}
@@ -1337,7 +1355,7 @@ def test_construct_from_single_file(tempdir):
     # instantiate from a single file with a filesystem object
     d2 = ds.dataset(path, filesystem=fs.LocalFileSystem())
     # instantiate from a single file with prefixed filesystem URI
-    d3 = ds.dataset(relative_path, filesystem=_filesystem_uri(directory))
+    d3 = ds.dataset(str(relative_path), filesystem=_filesystem_uri(directory))
     # pickle roundtrip
     d4 = pickle.loads(pickle.dumps(d1))
 
@@ -1610,6 +1628,37 @@ def test_open_dataset_partitioned_dictionary_type(tempdir, partitioning,
         pa.field("part2", dict_type(part_keys2[0]))
     )
     assert dataset.schema.equals(expected_schema)
+
+
+@pytest.mark.pandas
+def test_dataset_partitioned_dictionary_type_reconstruct(tempdir):
+    # https://issues.apache.org/jira/browse/ARROW-11400
+    table = pa.table({'part': np.repeat(['A', 'B'], 5), 'col': range(10)})
+    part = ds.partitioning(table.select(['part']).schema, flavor="hive")
+    ds.write_dataset(table, tempdir, partitioning=part, format="feather")
+
+    dataset = ds.dataset(
+        tempdir, format="feather",
+        partitioning=ds.HivePartitioning.discover(infer_dictionary=True)
+    )
+    expected = pa.table(
+        {'col': table['col'], 'part': table['part'].dictionary_encode()}
+    )
+    assert dataset.to_table().equals(expected)
+    fragment = list(dataset.get_fragments())[0]
+    assert fragment.to_table(schema=dataset.schema).equals(expected[:5])
+    part_expr = fragment.partition_expression
+
+    restored = pickle.loads(pickle.dumps(dataset))
+    assert restored.to_table().equals(expected)
+
+    restored = pickle.loads(pickle.dumps(fragment))
+    assert restored.to_table(schema=dataset.schema).equals(expected[:5])
+    # to_pandas call triggers computation of the actual dictionary values
+    assert restored.to_table(schema=dataset.schema).to_pandas().equals(
+        expected[:5].to_pandas()
+    )
+    assert restored.partition_expression.equals(part_expr)
 
 
 @pytest.fixture
@@ -2317,6 +2366,32 @@ def test_write_dataset_partitioned(tempdir):
 
 @pytest.mark.parquet
 @pytest.mark.pandas
+def test_write_dataset_partitioned_dict(tempdir):
+    directory = tempdir / "partitioned"
+    _ = _create_parquet_dataset_partitioned(directory)
+
+    # directory partitioning, dictionary partition columns
+    dataset = ds.dataset(
+        directory,
+        partitioning=ds.HivePartitioning.discover(infer_dictionary=True))
+    target = tempdir / 'partitioned-dir-target'
+    expected_paths = [
+        target / "a", target / "a" / "part-0.feather",
+        target / "b", target / "b" / "part-1.feather"
+    ]
+    partitioning = ds.partitioning(pa.schema([
+        dataset.schema.field('part')]),
+        dictionaries={'part': pa.array(['a', 'b'])})
+    # NB: dictionaries required here since we use partitioning to parse
+    # directories in _check_dataset_roundtrip (not currently required for
+    # the formatting step)
+    _check_dataset_roundtrip(
+        dataset, str(target), expected_paths, target,
+        partitioning=partitioning)
+
+
+@pytest.mark.parquet
+@pytest.mark.pandas
 def test_write_dataset_use_threads(tempdir):
     directory = tempdir / "partitioned"
     _ = _create_parquet_dataset_partitioned(directory)
@@ -2412,6 +2487,30 @@ def test_write_table_multiple_fragments(tempdir):
     )
 
 
+def test_write_table_partitioned_dict(tempdir):
+    # ensure writing table partitioned on a dictionary column works without
+    # specifying the dictionary values explicitly
+    table = pa.table([
+        pa.array(range(20)),
+        pa.array(np.repeat(['a', 'b'], 10)).dictionary_encode(),
+    ], names=['col', 'part'])
+
+    partitioning = ds.partitioning(table.select(["part"]).schema)
+
+    base_dir = tempdir / "dataset"
+    ds.write_dataset(
+        table, base_dir, format="feather", partitioning=partitioning
+    )
+
+    # check roundtrip
+    partitioning_read = ds.DirectoryPartitioning.discover(
+        ["part"], infer_dictionary=True)
+    result = ds.dataset(
+        base_dir, format="ipc", partitioning=partitioning_read
+    ).to_table()
+    assert result.equals(table)
+
+
 @pytest.mark.parquet
 def test_write_dataset_parquet(tempdir):
     import pyarrow.parquet as pq
@@ -2481,3 +2580,52 @@ def test_write_dataset_schema_metadata_parquet(tempdir):
 
     schema = pq.read_table(tempdir / "part-0.parquet").schema
     assert schema.metadata == {b'key': b'value'}
+
+
+@pytest.mark.parquet
+@pytest.mark.s3
+def test_write_dataset_s3(s3_example_simple):
+    # write dataset with s3 filesystem
+    _, _, fs, _, host, port, access_key, secret_key = s3_example_simple
+    uri_template = (
+        "s3://{}:{}@{{}}?scheme=http&endpoint_override={}:{}".format(
+            access_key, secret_key, host, port)
+    )
+
+    table = pa.table([
+        pa.array(range(20)), pa.array(np.random.randn(20)),
+        pa.array(np.repeat(['a', 'b'], 10))],
+        names=["f1", "f2", "part"]
+    )
+    part = ds.partitioning(pa.schema([("part", pa.string())]), flavor="hive")
+
+    # writing with filesystem object
+    ds.write_dataset(
+        table, "mybucket/dataset", filesystem=fs, format="feather",
+        partitioning=part
+    )
+    # check rountrip
+    result = ds.dataset(
+        "mybucket/dataset", filesystem=fs, format="ipc", partitioning="hive"
+    ).to_table()
+    assert result.equals(table)
+
+    # writing with URI
+    uri = uri_template.format("mybucket/dataset2")
+    ds.write_dataset(table, uri, format="feather", partitioning=part)
+    # check rountrip
+    result = ds.dataset(
+        "mybucket/dataset2", filesystem=fs, format="ipc", partitioning="hive"
+    ).to_table()
+    assert result.equals(table)
+
+    # writing with path + URI as filesystem
+    uri = uri_template.format("mybucket")
+    ds.write_dataset(
+        table, "dataset3", filesystem=uri, format="feather", partitioning=part
+    )
+    # check rountrip
+    result = ds.dataset(
+        "mybucket/dataset3", filesystem=fs, format="ipc", partitioning="hive"
+    ).to_table()
+    assert result.equals(table)

@@ -18,6 +18,7 @@
 //! This module contains functions and structs supporting user-defined aggregate functions.
 
 use fmt::{Debug, Formatter};
+// use std::any::Any;
 use std::fmt;
 
 // use arrow::{

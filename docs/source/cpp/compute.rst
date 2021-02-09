@@ -150,9 +150,11 @@ Aggregations
 +--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
 | mode                     | Unary      | Numeric            | Struct  (2)           | :struct:`ModeOptions`                      |
 +--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
+| quantile                 | Unary      | Numeric            | Scalar Numeric (3)    | :struct:`QuantileOptions`                  |
++--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
 | stddev                   | Unary      | Numeric            | Scalar Float64        | :struct:`VarianceOptions`                  |
 +--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
-| sum                      | Unary      | Numeric            | Scalar Numeric (3)    |                                            |
+| sum                      | Unary      | Numeric            | Scalar Numeric (4)    |                                            |
 +--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
 | variance                 | Unary      | Numeric            | Scalar Float64        | :struct:`VarianceOptions`                  |
 +--------------------------+------------+--------------------+-----------------------+--------------------------------------------+
@@ -168,7 +170,9 @@ Notes:
   Note that the output can have less than *N* elements if the input has
   less than *N* distinct values.
 
-* \(3) Output is Int64, UInt64 or Float64, depending on the input type
+* \(3) Output is Float64 or input type, depending on QuantileOptions.
+
+* \(4) Output is Int64, UInt64 or Float64, depending on the input type.
 
 Element-wise ("scalar") functions
 ---------------------------------
@@ -387,6 +391,53 @@ String transforms
 * \(3) Each UTF8-encoded character in the input is converted to lowercase or
   uppercase.
 
+
+String trimming
+~~~~~~~~~~~~~~~
+
+These functions trim off characters on both sides (trim), or the left (ltrim) or right side (rtrim).
+
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| Function name            | Arity      | Input types             | Output type         | Options class                          | Notes   |
++==========================+============+=========================+=====================+========================================+=========+
+| ascii_ltrim              | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(1)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| ascii_ltrim_whitespace   | Unary      | String-like             | String-like         |                                        | \(2)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| ascii_rtrim              | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(1)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| ascii_rtrim_whitespace   | Unary      | String-like             | String-like         |                                        | \(2)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| ascii_trim               | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(1)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| ascii_trim_whitespace    | Unary      | String-like             | String-like         |                                        | \(2)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_ltrim               | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(3)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_ltrim_whitespace    | Unary      | String-like             | String-like         |                                        | \(4)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_rtrim               | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(3)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_rtrim_whitespace    | Unary      | String-like             | String-like         |                                        | \(4)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_trim                | Unary      | String-like             | String-like         | :struct:`TrimOptions`                  | \(3)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+| utf8_trim_whitespace     | Unary      | String-like             | String-like         |                                        | \(4)    |
++--------------------------+------------+-------------------------+---------------------+----------------------------------------+---------+
+
+* \(1) Only characters specified in :member:`TrimOptions::characters` will be
+trimmed off. Both the input string as the `characters` argument are interepreted
+as ASCII characters.
+
+* \(2) Only trim off ASCII whitespace characters (``'\t'``, ``'\n'``, ``'\v'``,
+``'\f'``, ``'\r'``  and ``' '``).
+
+* \(3) Only characters specified in :member:`TrimOptions::characters` will be
+trimmed off.
+
+* \(4) Only trim off Unicode whitespace characters.
+
+
 Containment tests
 ~~~~~~~~~~~~~~~~~
 
@@ -461,6 +512,8 @@ Structural transforms
 +--------------------------+------------+------------------------------------------------+---------------------+---------+
 | list_value_length        | Unary      | List-like                                      | Int32 or Int64      | \(5)    |
 +--------------------------+------------+------------------------------------------------+---------------------+---------+
+| project                  | Varargs    | Any                                            | Struct              | \(6)    |
++--------------------------+------------+------------------------------------------------+---------------------+---------+
 
 * \(1) First input must be an array, second input a scalar of the same type.
   Output is an array of the same type as the inputs, and with the same values
@@ -474,6 +527,11 @@ Structural transforms
 
 * \(5) Each output element is the length of the corresponding input element
   (null if input is null).  Output type is Int32 for List, Int64 for LargeList.
+
+* \(6) The output struct's field types are the types of its arguments. The
+  field names are specified using an instance of :struct:`ProjectOptions`.
+  The output shape will be scalar if all inputs are scalar, otherwise any
+  scalars will be broadcast to arrays.
 
 Conversions
 ~~~~~~~~~~~

@@ -760,10 +760,8 @@ macro(build_boost)
       )
     set(BOOST_SYSTEM_LIBRARY boost_system_static)
     set(BOOST_FILESYSTEM_LIBRARY boost_filesystem_static)
-    set(BOOST_REGEX_LIBRARY boost_regex_static)
     set(BOOST_BUILD_PRODUCTS ${BOOST_STATIC_SYSTEM_LIBRARY}
-                             ${BOOST_STATIC_FILESYSTEM_LIBRARY}
-                             ${BOOST_STATIC_REGEX_LIBRARY})
+                             ${BOOST_STATIC_FILESYSTEM_LIBRARY})
 
     add_thirdparty_lib(boost_system STATIC_LIB "${BOOST_STATIC_SYSTEM_LIBRARY}")
 
@@ -854,13 +852,6 @@ else()
   set(THRIFT_REQUIRES_BOOST FALSE)
 endif()
 
-# Parquet requires boost only with gcc 4.8 (because of missing std::regex).
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.9")
-  set(PARQUET_REQUIRES_BOOST TRUE)
-else()
-  set(PARQUET_REQUIRES_BOOST FALSE)
-endif()
-
 # Compilers that don't support int128_t have a compile-time
 # (header-only) dependency on Boost for int128_t.
 if(ARROW_USE_UBSAN)
@@ -878,8 +869,7 @@ endif()
 if(ARROW_BUILD_INTEGRATION
    OR ARROW_BUILD_TESTS
    OR (ARROW_FLIGHT AND ARROW_BUILD_BENCHMARKS)
-   OR (ARROW_S3 AND ARROW_BUILD_BENCHMARKS)
-   OR (ARROW_PARQUET AND PARQUET_REQUIRES_BOOST))
+   OR (ARROW_S3 AND ARROW_BUILD_BENCHMARKS))
   set(ARROW_BOOST_REQUIRED TRUE)
   set(ARROW_BOOST_REQUIRE_LIBRARY TRUE)
 elseif(ARROW_GANDIVA
@@ -898,20 +888,18 @@ if(ARROW_BOOST_REQUIRED)
                      REQUIRED_VERSION
                      ${ARROW_BOOST_REQUIRED_VERSION}
                      IS_RUNTIME_DEPENDENCY
-                     ${ARROW_BOOST_REQUIRE_LIBRARY})
+                     # libarrow.so doesn't depend on libboost*.
+                     FALSE)
 
   if(TARGET Boost::system)
     set(BOOST_SYSTEM_LIBRARY Boost::system)
     set(BOOST_FILESYSTEM_LIBRARY Boost::filesystem)
-    set(BOOST_REGEX_LIBRARY Boost::regex)
   elseif(BoostAlt_FOUND)
     set(BOOST_SYSTEM_LIBRARY ${Boost_SYSTEM_LIBRARY})
     set(BOOST_FILESYSTEM_LIBRARY ${Boost_FILESYSTEM_LIBRARY})
-    set(BOOST_REGEX_LIBRARY ${Boost_REGEX_LIBRARY})
   else()
     set(BOOST_SYSTEM_LIBRARY boost_system_static)
     set(BOOST_FILESYSTEM_LIBRARY boost_filesystem_static)
-    set(BOOST_REGEX_LIBRARY boost_regex_static)
   endif()
   set(ARROW_BOOST_LIBS ${BOOST_SYSTEM_LIBRARY} ${BOOST_FILESYSTEM_LIBRARY})
 
@@ -1220,7 +1208,9 @@ if(ARROW_NEED_GFLAGS)
                      HAVE_ALT
                      TRUE
                      REQUIRED_VERSION
-                     ${ARROW_GFLAGS_REQUIRED_VERSION})
+                     ${ARROW_GFLAGS_REQUIRED_VERSION}
+                     IS_RUNTIME_DEPENDENCY
+                     FALSE)
   # TODO: Don't use global includes but rather target_include_directories
   include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})
 
@@ -1326,6 +1316,7 @@ endif()
 
 macro(build_protobuf)
   message("Building Protocol Buffers from source")
+  set(PROTOBUF_VENDORED TRUE)
   set(PROTOBUF_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/protobuf_ep-install")
   set(PROTOBUF_INCLUDE_DIR "${PROTOBUF_PREFIX}/include")
   # Newer protobuf releases always have a lib prefix independent from CMAKE_STATIC_LIBRARY_PREFIX
@@ -1363,7 +1354,6 @@ macro(build_protobuf)
         -DCMAKE_INSTALL_LIBDIR=lib
         "-DCMAKE_INSTALL_PREFIX=${PROTOBUF_PREFIX}"
         -Dprotobuf_BUILD_TESTS=OFF
-        -Dprotobuf_MSVC_STATIC_RUNTIME=${ARROW_USE_STATIC_CRT}
         -Dprotobuf_DEBUG_POSTFIX=)
     if(MSVC AND NOT ARROW_USE_STATIC_CRT)
       list(APPEND PROTOBUF_CMAKE_ARGS "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF")
@@ -1902,7 +1892,9 @@ if(ARROW_WITH_RAPIDJSON)
                      HAVE_ALT
                      TRUE
                      REQUIRED_VERSION
-                     ${ARROW_RAPIDJSON_REQUIRED_VERSION})
+                     ${ARROW_RAPIDJSON_REQUIRED_VERSION}
+                     IS_RUNTIME_DEPENDENCY
+                     FALSE)
 
   if(RapidJSON_INCLUDE_DIR)
     set(RAPIDJSON_INCLUDE_DIR "${RapidJSON_INCLUDE_DIR}")
@@ -1970,7 +1962,7 @@ macro(build_lz4)
       endif()
     endif()
     set(LZ4_STATIC_LIB
-        "${LZ4_BUILD_DIR}/visual/VS2010/bin/x64_${CMAKE_BUILD_TYPE}/liblz4_static.lib")
+        "${LZ4_BUILD_DIR}/build/VS2010/bin/x64_${CMAKE_BUILD_TYPE}/liblz4_static.lib")
     set(LZ4_BUILD_COMMAND
         BUILD_COMMAND
         msbuild.exe
@@ -1980,7 +1972,7 @@ macro(build_lz4)
         /p:PlatformToolset=v140
         ${LZ4_RUNTIME_LIBRARY_LINKAGE}
         /t:Build
-        ${LZ4_BUILD_DIR}/visual/VS2010/lz4.sln)
+        ${LZ4_BUILD_DIR}/build/VS2010/lz4.sln)
   else()
     set(LZ4_STATIC_LIB "${LZ4_BUILD_DIR}/lib/liblz4.a")
     set(LZ4_BUILD_COMMAND BUILD_COMMAND ${CMAKE_SOURCE_DIR}/build-support/build-lz4-lib.sh
@@ -2110,7 +2102,8 @@ macro(build_re2)
   set(RE2_STATIC_LIB
       "${RE2_PREFIX}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}re2${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
-  set(RE2_CMAKE_ARGS ${EP_COMMON_CMAKE_ARGS} "-DCMAKE_INSTALL_PREFIX=${RE2_PREFIX}")
+  set(RE2_CMAKE_ARGS ${EP_COMMON_CMAKE_ARGS} "-DCMAKE_INSTALL_PREFIX=${RE2_PREFIX}"
+                     -DCMAKE_INSTALL_LIBDIR=lib)
 
   externalproject_add(re2_ep
                       ${EP_LOG_OPTIONS}
@@ -2347,10 +2340,15 @@ macro(build_grpc)
       spinlock_wait
       stacktrace
       status
+      statusor
       str_format_internal
       strings
       strings_internal
       symbolize
+      # symbolize depends on debugging_internal
+      debugging_internal
+      # debugging_internal depends on demangle_internal
+      demangle_internal
       synchronization
       throw_delegate
       time
@@ -2411,6 +2409,10 @@ macro(build_grpc)
     add_dependencies(grpc_dependencies gflags_ep)
   endif()
 
+  if(RE2_VENDORED)
+    add_dependencies(grpc_dependencies re2_ep)
+  endif()
+
   add_dependencies(grpc_dependencies ${ARROW_PROTOBUF_LIBPROTOBUF} c-ares::cares
                    ZLIB::ZLIB)
 
@@ -2424,10 +2426,13 @@ macro(build_grpc)
   get_target_property(GRPC_GFLAGS_INCLUDE_DIR ${GFLAGS_LIBRARIES}
                       INTERFACE_INCLUDE_DIRECTORIES)
   get_filename_component(GRPC_GFLAGS_ROOT "${GRPC_GFLAGS_INCLUDE_DIR}" DIRECTORY)
+  get_target_property(GRPC_RE2_INCLUDE_DIR re2::re2 INTERFACE_INCLUDE_DIRECTORIES)
+  get_filename_component(GRPC_RE2_ROOT "${GRPC_RE2_INCLUDE_DIR}" DIRECTORY)
 
   set(GRPC_CMAKE_PREFIX "${GRPC_CMAKE_PREFIX};${GRPC_PB_ROOT}")
   set(GRPC_CMAKE_PREFIX "${GRPC_CMAKE_PREFIX};${GRPC_GFLAGS_ROOT}")
   set(GRPC_CMAKE_PREFIX "${GRPC_CMAKE_PREFIX};${GRPC_CARES_ROOT}")
+  set(GRPC_CMAKE_PREFIX "${GRPC_CMAKE_PREFIX};${GRPC_RE2_ROOT}")
 
   # ZLIB is never vendored
   set(GRPC_CMAKE_PREFIX "${GRPC_CMAKE_PREFIX};${ZLIB_ROOT}")
@@ -2456,18 +2461,14 @@ macro(build_grpc)
       -DgRPC_GFLAGS_PROVIDER=package
       -DgRPC_MSVC_STATIC_RUNTIME=${ARROW_USE_STATIC_CRT}
       -DgRPC_PROTOBUF_PROVIDER=package
-      -DgRPC_PROTOBUF_PACKAGE_TYPE=CONFIG
       -DgRPC_RE2_PROVIDER=package
       -DgRPC_SSL_PROVIDER=package
       -DgRPC_ZLIB_PROVIDER=package
-      -DgRPC_MSVC_STATIC_RUNTIME=${ARROW_USE_STATIC_CRT}
       -DCMAKE_INSTALL_PREFIX=${GRPC_PREFIX}
       -DCMAKE_INSTALL_LIBDIR=lib
       -DBUILD_SHARED_LIBS=OFF)
-  if(RE2_VENDORED)
-    list(APPEND GRPC_CMAKE_ARGS -Dre2_ROOT=${RE2_PREFIX}
-                -DCMAKE_POLICY_DEFAULT_CMP0074=NEW)
-    add_dependencies(grpc_dependencies re2_ep)
+  if(PROTOBUF_VENDORED)
+    list(APPEND GRPC_CMAKE_ARGS -DgRPC_PROTOBUF_PACKAGE_TYPE=CONFIG)
   endif()
   if(OPENSSL_ROOT_DIR)
     list(APPEND GRPC_CMAKE_ARGS -DOPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR})
@@ -2791,7 +2792,8 @@ macro(build_awssdk)
                       ${EP_LOG_OPTIONS}
                       URL ${AWS_CHECKSUMS_SOURCE_URL}
                       CMAKE_ARGS ${AWSSDK_COMMON_CMAKE_ARGS}
-                      BUILD_BYPRODUCTS ${AWS_CHECKSUMS_STATIC_LIBRARY})
+                      BUILD_BYPRODUCTS ${AWS_CHECKSUMS_STATIC_LIBRARY}
+                      DEPENDS aws_c_common_ep)
   add_dependencies(AWS::aws-checksums aws_checksums_ep)
 
   externalproject_add(aws_c_event_stream_ep
@@ -2799,7 +2801,7 @@ macro(build_awssdk)
                       URL ${AWS_C_EVENT_STREAM_SOURCE_URL}
                       CMAKE_ARGS ${AWSSDK_COMMON_CMAKE_ARGS}
                       BUILD_BYPRODUCTS ${AWS_C_EVENT_STREAM_STATIC_LIBRARY}
-                      DEPENDS aws_c_common_ep aws_checksums_ep)
+                      DEPENDS aws_checksums_ep)
   add_dependencies(AWS::aws-c-event-stream aws_c_event_stream_ep)
 
   externalproject_add(awssdk_ep

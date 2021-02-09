@@ -153,10 +153,13 @@ impl LambdaExecPlan for SortExec {
 }
 
 fn sort_batches(
-    batches: &Vec<RecordBatch>,
+    batches: &[RecordBatch],
     schema: &SchemaRef,
     expr: &[PhysicalSortExpr],
-) -> ArrowResult<RecordBatch> {
+) -> ArrowResult<Option<RecordBatch>> {
+    if batches.is_empty() {
+        return Ok(None);
+    }
     // combine all record batches into one for each column
     let combined_batch = RecordBatch::try_new(
         schema.clone(),
@@ -185,7 +188,7 @@ fn sort_batches(
     )?;
 
     // reorder all rows based on sorted indices
-    RecordBatch::try_new(
+    let sorted_batch = RecordBatch::try_new(
         schema.clone(),
         combined_batch
             .columns()
@@ -202,13 +205,14 @@ fn sort_batches(
                 )
             })
             .collect::<ArrowResult<Vec<ArrayRef>>>()?,
-    )
+    );
+    sorted_batch.map(Some)
 }
 
 pin_project! {
     struct SortStream {
         #[pin]
-        output: futures::channel::oneshot::Receiver<ArrowResult<RecordBatch>>,
+        output: futures::channel::oneshot::Receiver<ArrowResult<Option<RecordBatch>>>,
         finished: bool,
         schema: SchemaRef,
     }
@@ -255,10 +259,10 @@ impl Stream for SortStream {
 
                 // check for error in receiving channel and unwrap actual result
                 let result = match result {
-                    Err(e) => Err(ArrowError::ExternalError(Box::new(e))), // error receiving
-                    Ok(result) => result,
+                    Err(e) => Some(Err(ArrowError::ExternalError(Box::new(e)))), // error receiving
+                    Ok(result) => result.transpose(),
                 };
-                Poll::Ready(Some(result))
+                Poll::Ready(result)
             }
             Poll::Pending => Poll::Pending,
         }
@@ -386,7 +390,7 @@ mod tests {
                     },
                 },
             ],
-            Arc::new(MemoryExec::try_new(&vec![vec![batch]], schema, None)?),
+            Arc::new(MemoryExec::try_new(&[vec![batch]], schema, None)?),
             2,
         )?);
 

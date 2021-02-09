@@ -100,10 +100,10 @@ pub enum DataType {
     Timestamp(TimeUnit, Option<String>),
     /// A 32-bit date representing the elapsed time since UNIX epoch (1970-01-01)
     /// in days (32 bits).
-    Date32(DateUnit),
+    Date32,
     /// A 64-bit date representing the elapsed time since UNIX epoch (1970-01-01)
-    /// in milliseconds (64 bits).
-    Date64(DateUnit),
+    /// in milliseconds (64 bits). Values are evenly divisible by 86400000.
+    Date64,
     /// A 32-bit time representing the elapsed time since midnight in the unit of `TimeUnit`.
     Time32(TimeUnit),
     /// A 64-bit time representing the elapsed time since midnight in the unit of `TimeUnit`.
@@ -150,17 +150,6 @@ pub enum DataType {
     Decimal(usize, usize),
 }
 
-/// Date is either a 32-bit or 64-bit type representing elapsed time since UNIX
-/// epoch (1970-01-01) in days or milliseconds.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum DateUnit {
-    /// Days since the UNIX epoch.
-    Day,
-    /// Milliseconds indicating UNIX time elapsed since the epoch (no
-    /// leap seconds), where the values are evenly divisible by 86400000.
-    Millisecond,
-}
-
 /// An absolute length of time in seconds, milliseconds, microseconds or nanoseconds.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TimeUnit {
@@ -180,7 +169,7 @@ pub enum IntervalUnit {
     /// Indicates the number of elapsed whole months, stored as 4-byte integers.
     YearMonth,
     /// Indicates the number of elapsed days and milliseconds,
-    /// stored as 2 contiguous 32-bit integers (8-bytes in total).
+    /// stored as 2 contiguous 32-bit integers (days, milliseconds) (8-bytes in total).
     DayTime,
 }
 
@@ -199,11 +188,18 @@ pub struct Field {
     metadata: Option<BTreeMap<String, String>>,
 }
 
-pub trait ArrowNativeType:
-    fmt::Debug + Send + Sync + Copy + PartialOrd + FromStr + Default + 'static
-{
+/// Trait declaring any type that is serializable to JSON. This includes all primitive types (bool, i32, etc.).
+pub trait JsonSerializable: 'static {
     fn into_json_value(self) -> Option<Value>;
+}
 
+/// Trait expressing a Rust type that has the same in-memory representation
+/// as Arrow. This includes `i16`, `f32`, but excludes `bool` (which in arrow is represented in bits).
+/// In little endian machines, types that implement [`ArrowNativeType`] can be memcopied to arrow buffers
+/// as is.
+pub trait ArrowNativeType:
+    fmt::Debug + Send + Sync + Copy + PartialOrd + FromStr + Default + JsonSerializable
+{
     /// Convert native type from usize.
     fn from_usize(_: usize) -> Option<Self> {
         None
@@ -225,7 +221,8 @@ pub trait ArrowNativeType:
     }
 }
 
-/// Trait indicating a primitive fixed-width type (bool, ints and floats).
+/// Trait bridging the dynamic-typed nature of Arrow (via [`DataType`]) with the
+/// static-typed nature of rust types ([`ArrowNativeType`]) for all types that implement [`ArrowNativeType`].
 pub trait ArrowPrimitiveType: 'static {
     /// Corresponding Rust native type for the primitive type.
     type Native: ArrowNativeType;
@@ -246,31 +243,35 @@ pub trait ArrowPrimitiveType: 'static {
     }
 }
 
-impl ArrowNativeType for bool {
+impl JsonSerializable for bool {
+    fn into_json_value(self) -> Option<Value> {
+        Some(self.into())
+    }
+}
+
+impl JsonSerializable for i8 {
     fn into_json_value(self) -> Option<Value> {
         Some(self.into())
     }
 }
 
 impl ArrowNativeType for i8 {
-    fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
-    }
-
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
 
     fn to_usize(&self) -> Option<usize> {
         num::ToPrimitive::to_usize(self)
+    }
+}
+
+impl JsonSerializable for i16 {
+    fn into_json_value(self) -> Option<Value> {
+        Some(self.into())
     }
 }
 
 impl ArrowNativeType for i16 {
-    fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
-    }
-
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
@@ -280,11 +281,13 @@ impl ArrowNativeType for i16 {
     }
 }
 
-impl ArrowNativeType for i32 {
+impl JsonSerializable for i32 {
     fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
+        Some(self.into())
     }
+}
 
+impl ArrowNativeType for i32 {
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
@@ -299,11 +302,13 @@ impl ArrowNativeType for i32 {
     }
 }
 
-impl ArrowNativeType for i64 {
+impl JsonSerializable for i64 {
     fn into_json_value(self) -> Option<Value> {
         Some(VNumber(Number::from(self)))
     }
+}
 
+impl ArrowNativeType for i64 {
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
@@ -318,53 +323,61 @@ impl ArrowNativeType for i64 {
     }
 }
 
-impl ArrowNativeType for u8 {
+impl JsonSerializable for u8 {
     fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
+        Some(self.into())
     }
+}
 
+impl ArrowNativeType for u8 {
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
 
     fn to_usize(&self) -> Option<usize> {
         num::ToPrimitive::to_usize(self)
+    }
+}
+
+impl JsonSerializable for u16 {
+    fn into_json_value(self) -> Option<Value> {
+        Some(self.into())
     }
 }
 
 impl ArrowNativeType for u16 {
-    fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
-    }
-
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
 
     fn to_usize(&self) -> Option<usize> {
         num::ToPrimitive::to_usize(self)
+    }
+}
+
+impl JsonSerializable for u32 {
+    fn into_json_value(self) -> Option<Value> {
+        Some(self.into())
     }
 }
 
 impl ArrowNativeType for u32 {
-    fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
-    }
-
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
 
     fn to_usize(&self) -> Option<usize> {
         num::ToPrimitive::to_usize(self)
+    }
+}
+
+impl JsonSerializable for u64 {
+    fn into_json_value(self) -> Option<Value> {
+        Some(self.into())
     }
 }
 
 impl ArrowNativeType for u64 {
-    fn into_json_value(self) -> Option<Value> {
-        Some(VNumber(Number::from(self)))
-    }
-
     fn from_usize(v: usize) -> Option<Self> {
         num::FromPrimitive::from_usize(v)
     }
@@ -374,17 +387,20 @@ impl ArrowNativeType for u64 {
     }
 }
 
-impl ArrowNativeType for f32 {
+impl JsonSerializable for f32 {
     fn into_json_value(self) -> Option<Value> {
         Number::from_f64(f64::round(self as f64 * 1000.0) / 1000.0).map(VNumber)
     }
 }
 
-impl ArrowNativeType for f64 {
+impl JsonSerializable for f64 {
     fn into_json_value(self) -> Option<Value> {
         Number::from_f64(self).map(VNumber)
     }
 }
+
+impl ArrowNativeType for f32 {}
+impl ArrowNativeType for f64 {}
 
 // BooleanType is special: its bit-width is not the size of the primitive type, and its `index`
 // operation assumes bit-packing.
@@ -437,8 +453,8 @@ make_type!(
     i64,
     DataType::Timestamp(TimeUnit::Nanosecond, None)
 );
-make_type!(Date32Type, i32, DataType::Date32(DateUnit::Day));
-make_type!(Date64Type, i64, DataType::Date64(DateUnit::Millisecond));
+make_type!(Date32Type, i32, DataType::Date32);
+make_type!(Date64Type, i64, DataType::Date64);
 make_type!(Time32SecondType, i32, DataType::Time32(TimeUnit::Second));
 make_type!(
     Time32MillisecondType,
@@ -589,6 +605,8 @@ where
 
     /// Writes a SIMD result back to a slice
     fn write(simd_result: Self::Simd, slice: &mut [Self::Native]);
+
+    fn unary_op<F: Fn(Self::Simd) -> Self::Simd>(a: Self::Simd, op: F) -> Self::Simd;
 }
 
 #[cfg(not(simd))]
@@ -790,6 +808,14 @@ macro_rules! make_numeric_type {
             fn write(simd_result: Self::Simd, slice: &mut [Self::Native]) {
                 unsafe { simd_result.write_to_slice_unaligned_unchecked(slice) };
             }
+
+            #[inline]
+            fn unary_op<F: Fn(Self::Simd) -> Self::Simd>(
+                a: Self::Simd,
+                op: F,
+            ) -> Self::Simd {
+                op(a)
+            }
         }
 
         #[cfg(not(simd))]
@@ -893,6 +919,32 @@ make_signed_numeric_type!(Int64Type, i64x8);
 make_signed_numeric_type!(Float32Type, f32x16);
 make_signed_numeric_type!(Float64Type, f64x8);
 
+#[cfg(simd)]
+pub trait ArrowFloatNumericType: ArrowNumericType {
+    fn pow(base: Self::Simd, raise: Self::Simd) -> Self::Simd;
+}
+
+#[cfg(not(simd))]
+pub trait ArrowFloatNumericType: ArrowNumericType {}
+
+macro_rules! make_float_numeric_type {
+    ($impl_ty:ty, $simd_ty:ident) => {
+        #[cfg(simd)]
+        impl ArrowFloatNumericType for $impl_ty {
+            #[inline]
+            fn pow(base: Self::Simd, raise: Self::Simd) -> Self::Simd {
+                base.powf(raise)
+            }
+        }
+
+        #[cfg(not(simd))]
+        impl ArrowFloatNumericType for $impl_ty {}
+    };
+}
+
+make_float_numeric_type!(Float32Type, f32x16);
+make_float_numeric_type!(Float64Type, f64x8);
+
 /// A subtype of primitive type that represents temporal values.
 pub trait ArrowTemporalType: ArrowPrimitiveType {}
 
@@ -943,6 +995,7 @@ pub trait ToByteSlice {
 }
 
 impl<T: ArrowNativeType> ToByteSlice for [T] {
+    #[inline]
     fn to_byte_slice(&self) -> &[u8] {
         let raw_ptr = self.as_ptr() as *const T as *const u8;
         unsafe { from_raw_parts(raw_ptr, self.len() * size_of::<T>()) }
@@ -950,14 +1003,21 @@ impl<T: ArrowNativeType> ToByteSlice for [T] {
 }
 
 impl<T: ArrowNativeType> ToByteSlice for T {
+    #[inline]
     fn to_byte_slice(&self) -> &[u8] {
         let raw_ptr = self as *const T as *const u8;
         unsafe { from_raw_parts(raw_ptr, size_of::<T>()) }
     }
 }
 
+impl fmt::Display for DataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl DataType {
-    /// Parse a data type from a JSON representation
+    /// Parse a data type from a JSON representation.
     pub(crate) fn from(json: &Value) -> Result<DataType> {
         let default_field = Field::new("", DataType::Boolean, true);
         match *json {
@@ -1023,10 +1083,8 @@ impl DataType {
                     Ok(DataType::Timestamp(unit?, tz?))
                 }
                 Some(s) if s == "date" => match map.get("unit") {
-                    Some(p) if p == "DAY" => Ok(DataType::Date32(DateUnit::Day)),
-                    Some(p) if p == "MILLISECOND" => {
-                        Ok(DataType::Date64(DateUnit::Millisecond))
-                    }
+                    Some(p) if p == "DAY" => Ok(DataType::Date32),
+                    Some(p) if p == "MILLISECOND" => Ok(DataType::Date64),
                     _ => Err(ArrowError::ParseError(
                         "date unit missing or invalid".to_string(),
                     )),
@@ -1145,7 +1203,7 @@ impl DataType {
         }
     }
 
-    /// Generate a JSON representation of the data type
+    /// Generate a JSON representation of the data type.
     pub fn to_json(&self) -> Value {
         match self {
             DataType::Null => json!({"name": "null"}),
@@ -1191,11 +1249,11 @@ impl DataType {
                     TimeUnit::Nanosecond => "NANOSECOND",
                 }})
             }
-            DataType::Date32(unit) | DataType::Date64(unit) => {
-                json!({"name": "date", "unit": match unit {
-                    DateUnit::Day => "DAY",
-                    DateUnit::Millisecond => "MILLISECOND",
-                }})
+            DataType::Date32 => {
+                json!({"name": "date", "unit": "DAY"})
+            }
+            DataType::Date64 => {
+                json!({"name": "date", "unit": "MILLISECOND"})
             }
             DataType::Timestamp(unit, None) => {
                 json!({"name": "timestamp", "unit": match unit {
@@ -1230,7 +1288,7 @@ impl DataType {
         }
     }
 
-    /// Returns true if this type is numeric: (UInt*, Unit*, or Float*)
+    /// Returns true if this type is numeric: (UInt*, Unit*, or Float*).
     pub fn is_numeric(t: &DataType) -> bool {
         use DataType::*;
         matches!(
@@ -1249,7 +1307,7 @@ impl DataType {
     }
 
     /// Compares the datatype with another, ignoring nested field names
-    /// and metadata
+    /// and metadata.
     pub(crate) fn equals_datatype(&self, other: &DataType) -> bool {
         match (&self, other) {
             (DataType::List(a), DataType::List(b))
@@ -1324,25 +1382,25 @@ impl Field {
         &self.metadata
     }
 
-    /// Returns an immutable reference to the `Field`'s name
+    /// Returns an immutable reference to the `Field`'s name.
     #[inline]
     pub const fn name(&self) -> &String {
         &self.name
     }
 
-    /// Returns an immutable reference to the `Field`'s  data-type
+    /// Returns an immutable reference to the `Field`'s  data-type.
     #[inline]
     pub const fn data_type(&self) -> &DataType {
         &self.data_type
     }
 
-    /// Indicates whether this `Field` supports null values
+    /// Indicates whether this `Field` supports null values.
     #[inline]
     pub const fn is_nullable(&self) -> bool {
         self.nullable
     }
 
-    /// Returns the dictionary ID, if this is a dictionary type
+    /// Returns the dictionary ID, if this is a dictionary type.
     #[inline]
     pub const fn dict_id(&self) -> Option<i64> {
         match self.data_type {
@@ -1351,7 +1409,7 @@ impl Field {
         }
     }
 
-    /// Returns whether this `Field`'s dictionary is ordered, if this is a dictionary type
+    /// Returns whether this `Field`'s dictionary is ordered, if this is a dictionary type.
     #[inline]
     pub const fn dict_is_ordered(&self) -> Option<bool> {
         match self.data_type {
@@ -1360,7 +1418,7 @@ impl Field {
         }
     }
 
-    /// Parse a `Field` definition from a JSON representation
+    /// Parse a `Field` definition from a JSON representation.
     pub fn from(json: &Value) -> Result<Self> {
         match *json {
             Value::Object(ref map) => {
@@ -1557,7 +1615,7 @@ impl Field {
         }
     }
 
-    /// Generate a JSON representation of the `Field`
+    /// Generate a JSON representation of the `Field`.
     pub fn to_json(&self) -> Value {
         let children: Vec<Value> = match self.data_type() {
             DataType::Struct(fields) => fields.iter().map(|f| f.to_json()).collect(),
@@ -1693,8 +1751,8 @@ impl Field {
             | DataType::Float32
             | DataType::Float64
             | DataType::Timestamp(_, _)
-            | DataType::Date32(_)
-            | DataType::Date64(_)
+            | DataType::Date32
+            | DataType::Date64
             | DataType::Time32(_)
             | DataType::Time64(_)
             | DataType::Duration(_)
@@ -1754,7 +1812,7 @@ impl Schema {
         }
     }
 
-    /// Creates a new `Schema` from a sequence of `Field` values
+    /// Creates a new `Schema` from a sequence of `Field` values.
     ///
     /// # Example
     ///
@@ -1802,7 +1860,7 @@ impl Schema {
     /// ```
     /// use arrow::datatypes::*;
     ///
-    /// let merged = Schema::try_merge(&vec![
+    /// let merged = Schema::try_merge(vec![
     ///     Schema::new(vec![
     ///         Field::new("c1", DataType::Int64, false),
     ///         Field::new("c2", DataType::Utf8, false),
@@ -1823,65 +1881,61 @@ impl Schema {
     ///     ]),
     /// );
     /// ```
-    pub fn try_merge(schemas: &[Self]) -> Result<Self> {
-        let mut merged = Self::empty();
-
-        for schema in schemas {
-            for (key, value) in schema.metadata.iter() {
-                // merge metadata
-                match merged.metadata.get(key) {
-                    Some(old_val) => {
-                        if old_val != value {
+    pub fn try_merge(schemas: impl IntoIterator<Item = Self>) -> Result<Self> {
+        schemas
+            .into_iter()
+            .try_fold(Self::empty(), |mut merged, schema| {
+                let Schema { metadata, fields } = schema;
+                for (key, value) in metadata.into_iter() {
+                    // merge metadata
+                    if let Some(old_val) = merged.metadata.get(&key) {
+                        if old_val != &value {
                             return Err(ArrowError::SchemaError(
-                                "Fail to merge schema due to conflicting metadata"
+                                "Fail to merge schema due to conflicting metadata."
                                     .to_string(),
                             ));
                         }
                     }
-                    None => {
-                        merged.metadata.insert(key.clone(), value.clone());
+                    merged.metadata.insert(key, value);
+                }
+                // merge fields
+                for field in fields.into_iter() {
+                    let mut new_field = true;
+                    for merged_field in &mut merged.fields {
+                        if field.name != merged_field.name {
+                            continue;
+                        }
+                        new_field = false;
+                        merged_field.try_merge(&field)?
+                    }
+                    // found a new field, add to field list
+                    if new_field {
+                        merged.fields.push(field);
                     }
                 }
-            }
-            // merge fields
-            for field in &schema.fields {
-                let mut new_field = true;
-                for merged_field in &mut merged.fields {
-                    if field.name != merged_field.name {
-                        continue;
-                    }
-                    new_field = false;
-                    merged_field.try_merge(field)?
-                }
-                // found a new field, add to field list
-                if new_field {
-                    merged.fields.push(field.clone());
-                }
-            }
-        }
-
-        Ok(merged)
+                Ok(merged)
+            })
     }
 
-    /// Returns an immutable reference of the vector of `Field` instances
+    /// Returns an immutable reference of the vector of `Field` instances.
     #[inline]
     pub const fn fields(&self) -> &Vec<Field> {
         &self.fields
     }
 
     /// Returns an immutable reference of a specific `Field` instance selected using an
-    /// offset within the internal `fields` vector
+    /// offset within the internal `fields` vector.
     pub fn field(&self, i: usize) -> &Field {
         &self.fields[i]
     }
 
-    /// Returns an immutable reference of a specific `Field` instance selected by name
+    /// Returns an immutable reference of a specific `Field` instance selected by name.
     pub fn field_with_name(&self, name: &str) -> Result<&Field> {
         Ok(&self.fields[self.index_of(name)?])
     }
 
     /// Returns a vector of immutable references to all `Field` instances selected by
-    /// the dictionary ID they use
+    /// the dictionary ID they use.
     pub fn fields_with_dict_id(&self, dict_id: i64) -> Vec<&Field> {
         self.fields
             .iter()
@@ -1889,7 +1943,7 @@ impl Schema {
             .collect()
     }
 
-    /// Find the index of the column with the given name
+    /// Find the index of the column with the given name.
     pub fn index_of(&self, name: &str) -> Result<usize> {
         for i in 0..self.fields.len() {
             if self.fields[i].name == name {
@@ -1911,7 +1965,7 @@ impl Schema {
     }
 
     /// Look up a column by name and return a immutable reference to the column along with
-    /// it's index
+    /// its index.
     pub fn column_with_name(&self, name: &str) -> Option<(usize, &Field)> {
         self.fields
             .iter()
@@ -1919,7 +1973,7 @@ impl Schema {
             .find(|&(_, c)| c.name == name)
     }
 
-    /// Generate a JSON representation of the `Schema`
+    /// Generate a JSON representation of the `Schema`.
     pub fn to_json(&self) -> Value {
         json!({
             "fields": self.fields.iter().map(|field| field.to_json()).collect::<Vec<Value>>(),
@@ -1927,7 +1981,7 @@ impl Schema {
         })
     }
 
-    /// Parse a `Schema` definition from a JSON representation
+    /// Parse a `Schema` definition from a JSON representation.
     pub fn from(json: &Value) -> Result<Self> {
         match *json {
             Value::Object(ref schema) => {
@@ -1956,8 +2010,8 @@ impl Schema {
         }
     }
 
-    /// Parse a `metadata` definition from a JSON representation
-    /// The JSON can either be an Object or an Array of Objects
+    /// Parse a `metadata` definition from a JSON representation.
+    /// The JSON can either be an Object or an Array of Objects.
     fn from_metadata(json: &Value) -> Result<HashMap<String, String>> {
         match json {
             Value::Array(_) => {
@@ -2267,8 +2321,8 @@ mod tests {
                 Field::new("c2", DataType::Binary, false),
                 Field::new("c3", DataType::FixedSizeBinary(3), false),
                 Field::new("c4", DataType::Boolean, false),
-                Field::new("c5", DataType::Date32(DateUnit::Day), false),
-                Field::new("c6", DataType::Date64(DateUnit::Millisecond), false),
+                Field::new("c5", DataType::Date32, false),
+                Field::new("c6", DataType::Date64, false),
                 Field::new("c7", DataType::Time32(TimeUnit::Second), false),
                 Field::new("c8", DataType::Time32(TimeUnit::Millisecond), false),
                 Field::new("c9", DataType::Time32(TimeUnit::Microsecond), false),
@@ -3010,7 +3064,8 @@ mod tests {
         f2.set_metadata(Some(metadata2));
 
         assert!(
-            Schema::try_merge(&[Schema::new(vec![f1]), Schema::new(vec![f2])]).is_err()
+            Schema::try_merge(vec![Schema::new(vec![f1]), Schema::new(vec![f2])])
+                .is_err()
         );
 
         // 2. None + Some
@@ -3084,7 +3139,7 @@ mod tests {
 
     #[test]
     fn test_schema_merge() -> Result<()> {
-        let merged = Schema::try_merge(&[
+        let merged = Schema::try_merge(vec![
             Schema::new(vec![
                 Field::new("first_name", DataType::Utf8, false),
                 Field::new("last_name", DataType::Utf8, false),
@@ -3143,7 +3198,7 @@ mod tests {
 
         // support merge union fields
         assert_eq!(
-            Schema::try_merge(&[
+            Schema::try_merge(vec![
                 Schema::new(vec![Field::new(
                     "c1",
                     DataType::Union(vec![
@@ -3173,7 +3228,7 @@ mod tests {
         );
 
         // incompatible field should throw error
-        assert!(Schema::try_merge(&[
+        assert!(Schema::try_merge(vec![
             Schema::new(vec![
                 Field::new("first_name", DataType::Utf8, false),
                 Field::new("last_name", DataType::Utf8, false),
@@ -3183,7 +3238,7 @@ mod tests {
         .is_err());
 
         // incompatible metadata should throw error
-        assert!(Schema::try_merge(&[
+        assert!(Schema::try_merge(vec![
             Schema::new_with_metadata(
                 vec![Field::new("first_name", DataType::Utf8, false)],
                 [("foo".to_string(), "bar".to_string()),]

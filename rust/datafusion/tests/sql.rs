@@ -346,6 +346,63 @@ async fn csv_query_group_by_int_min_max() -> Result<()> {
 }
 
 #[tokio::test]
+async fn csv_query_group_by_float32() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_simple_csv(&mut ctx)?;
+
+    let sql =
+        "SELECT COUNT(*) as cnt, c1 FROM aggregate_simple GROUP BY c1 ORDER BY cnt DESC";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![
+        vec!["5", "0.00005"],
+        vec!["4", "0.00004"],
+        vec!["3", "0.00003"],
+        vec!["2", "0.00002"],
+        vec!["1", "0.00001"],
+    ];
+    assert_eq!(expected, actual);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn csv_query_group_by_float64() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_simple_csv(&mut ctx)?;
+
+    let sql =
+        "SELECT COUNT(*) as cnt, c2 FROM aggregate_simple GROUP BY c2 ORDER BY cnt DESC";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![
+        vec!["5", "0.000000000005"],
+        vec!["4", "0.000000000004"],
+        vec!["3", "0.000000000003"],
+        vec!["2", "0.000000000002"],
+        vec!["1", "0.000000000001"],
+    ];
+    assert_eq!(expected, actual);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn csv_query_group_by_boolean() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_simple_csv(&mut ctx)?;
+
+    let sql =
+        "SELECT COUNT(*) as cnt, c3 FROM aggregate_simple GROUP BY c3 ORDER BY cnt DESC";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![vec!["9", "true"], vec!["6", "false"]];
+    assert_eq!(expected, actual);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn csv_query_group_by_two_columns() -> Result<()> {
     let mut ctx = ExecutionContext::new();
     register_aggregate_csv(&mut ctx)?;
@@ -378,6 +435,52 @@ async fn csv_query_group_by_two_columns() -> Result<()> {
         vec!["e", "3", "-95"],
         vec!["e", "4", "-56"],
         vec!["e", "5", "-86"],
+    ];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn csv_query_group_by_and_having() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_csv(&mut ctx)?;
+    let sql = "SELECT c1, MIN(c3) AS m FROM aggregate_test_100 GROUP BY c1 HAVING m < -100 AND MAX(c3) > 70";
+    let mut actual = execute(&mut ctx, sql).await;
+    actual.sort();
+    let expected = vec![vec!["a", "-101"], vec!["c", "-117"]];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn csv_query_group_by_and_having_and_where() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_csv(&mut ctx)?;
+    let sql = "SELECT c1, MIN(c3) AS m
+               FROM aggregate_test_100
+               WHERE c1 IN ('a', 'b')
+               GROUP BY c1
+               HAVING m < -100 AND MAX(c3) > 70";
+    let mut actual = execute(&mut ctx, sql).await;
+    actual.sort();
+    let expected = vec![vec!["a", "-101"]];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn csv_query_having_without_group_by() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_csv(&mut ctx)?;
+    let sql = "SELECT c1, c2, c3 FROM aggregate_test_100 HAVING c2 >= 4 AND c3 > 90";
+    let mut actual = execute(&mut ctx, sql).await;
+    actual.sort();
+    let expected = vec![
+        vec!["c", "4", "123"],
+        vec!["c", "5", "118"],
+        vec!["d", "4", "102"],
+        vec!["e", "4", "96"],
+        vec!["e", "4", "97"],
     ];
     assert_eq!(expected, actual);
     Ok(())
@@ -653,7 +756,8 @@ async fn csv_query_cast() -> Result<()> {
 async fn csv_query_cast_literal() -> Result<()> {
     let mut ctx = ExecutionContext::new();
     register_aggregate_csv(&mut ctx)?;
-    let sql = "SELECT c12, CAST(1 AS float) FROM aggregate_test_100 WHERE c12 > CAST(0 AS float) LIMIT 2";
+    let sql =
+        "SELECT c12, CAST(1 AS float) FROM aggregate_test_100 WHERE c12 > CAST(0 AS float) LIMIT 2";
     let actual = execute(&mut ctx, sql).await;
     let expected = vec![
         vec!["0.9294097332465232", "1"],
@@ -1066,8 +1170,7 @@ async fn equijoin() -> Result<()> {
 #[tokio::test]
 async fn left_join() -> Result<()> {
     let mut ctx = create_join_context("t1_id", "t2_id")?;
-    let sql =
-        "SELECT t1_id, t1_name, t2_name FROM t1 LEFT JOIN t2 ON t1_id = t2_id ORDER BY t1_id";
+    let sql = "SELECT t1_id, t1_name, t2_name FROM t1 LEFT JOIN t2 ON t1_id = t2_id ORDER BY t1_id";
     let actual = execute(&mut ctx, sql).await;
     let expected = vec![
         vec!["11", "a", "z"],
@@ -1320,6 +1423,22 @@ fn register_aggregate_csv(ctx: &mut ExecutionContext) -> Result<()> {
     ctx.register_csv(
         "aggregate_test_100",
         &format!("{}/csv/aggregate_test_100.csv", testdata),
+        CsvReadOptions::new().schema(&schema),
+    )?;
+    Ok(())
+}
+
+fn register_aggregate_simple_csv(ctx: &mut ExecutionContext) -> Result<()> {
+    // It's not possible to use aggregate_test_100, not enought similar values to test grouping on floats
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("c1", DataType::Float32, false),
+        Field::new("c2", DataType::Float64, false),
+        Field::new("c3", DataType::Boolean, false),
+    ]));
+
+    ctx.register_csv(
+        "aggregate_simple",
+        "tests/aggregate_simple.csv",
         CsvReadOptions::new().schema(&schema),
     )?;
     Ok(())
@@ -1828,6 +1947,46 @@ async fn csv_between_expr_negated() -> Result<()> {
 }
 
 #[tokio::test]
+async fn csv_group_by_date() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("date", DataType::Date32, false),
+        Field::new("cnt", DataType::Int32, false),
+    ]));
+    let data = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![
+                Some(100),
+                Some(100),
+                Some(100),
+                Some(101),
+                Some(101),
+                Some(101),
+            ])),
+            Arc::new(Int32Array::from(vec![
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(3),
+                Some(3),
+                Some(3),
+            ])),
+        ],
+    )?;
+    let table = MemTable::try_new(schema, vec![vec![data]])?;
+
+    ctx.register_table("dates", Box::new(table));
+    let sql = "SELECT SUM(cnt) FROM dates GROUP BY date";
+    let actual = execute(&mut ctx, sql).await;
+    let mut actual: Vec<String> = actual.iter().flatten().cloned().collect();
+    actual.sort();
+    let expected = vec!["6", "9"];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
 async fn string_expressions() -> Result<()> {
     let mut ctx = ExecutionContext::new();
     let sql = "SELECT
@@ -1849,6 +2008,128 @@ async fn string_expressions() -> Result<()> {
     let expected = vec![vec![
         "3", "NULL", "3", "NULL", "tom", "NULL", "TOM", "NULL", "tom", "NULL", "tom ",
         " tom",
+    ]];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn boolean_expressions() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    let sql = "SELECT
+        true AS val_1,
+        false AS val_2
+    ";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![vec!["true", "false"]];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn interval_expressions() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    let sql = "SELECT
+        (interval '1') as interval_1,
+        (interval '1 second') as interval_2,
+        (interval '500 milliseconds') as interval_3,
+        (interval '5 second') as interval_4,
+        (interval '1 minute') as interval_5,
+        (interval '0.5 minute') as interval_6,
+        (interval '.5 minute') as interval_7,
+        (interval '5 minute') as interval_8,
+        (interval '5 minute 1 second') as interval_9,
+        (interval '1 hour') as interval_10,
+        (interval '5 hour') as interval_11,
+        (interval '1 day') as interval_12,
+        (interval '1 day 1') as interval_13,
+        (interval '0.5') as interval_14,
+        (interval '0.5 day 1') as interval_15,
+        (interval '0.49 day') as interval_16,
+        (interval '0.499 day') as interval_17,
+        (interval '0.4999 day') as interval_18,
+        (interval '0.49999 day') as interval_19,
+        (interval '0.49999999999 day') as interval_20,
+        (interval '5 day') as interval_21,
+        (interval '5 day 4 hours 3 minutes 2 seconds 100 milliseconds') as interval_22,
+        (interval '0.5 month') as interval_23,
+        (interval '1 month') as interval_24,
+        (interval '5 month') as interval_25,
+        (interval '13 month') as interval_26,
+        (interval '0.5 year') as interval_27,
+        (interval '1 year') as interval_28,
+        (interval '2 year') as interval_29
+    ";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![vec![
+        "0 years 0 mons 0 days 0 hours 0 mins 1.00 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 1.00 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 0.500 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 5.00 secs",
+        "0 years 0 mons 0 days 0 hours 1 mins 0.00 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 30.00 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 30.00 secs",
+        "0 years 0 mons 0 days 0 hours 5 mins 0.00 secs",
+        "0 years 0 mons 0 days 0 hours 5 mins 1.00 secs",
+        "0 years 0 mons 0 days 1 hours 0 mins 0.00 secs",
+        "0 years 0 mons 0 days 5 hours 0 mins 0.00 secs",
+        "0 years 0 mons 1 days 0 hours 0 mins 0.00 secs",
+        "0 years 0 mons 1 days 0 hours 0 mins 1.00 secs",
+        "0 years 0 mons 0 days 0 hours 0 mins 0.500 secs",
+        "0 years 0 mons 0 days 12 hours 0 mins 1.00 secs",
+        "0 years 0 mons 0 days 11 hours 45 mins 36.00 secs",
+        "0 years 0 mons 0 days 11 hours 58 mins 33.596 secs",
+        "0 years 0 mons 0 days 11 hours 59 mins 51.364 secs",
+        "0 years 0 mons 0 days 11 hours 59 mins 59.136 secs",
+        "0 years 0 mons 0 days 12 hours 0 mins 0.00 secs",
+        "0 years 0 mons 5 days 0 hours 0 mins 0.00 secs",
+        "0 years 0 mons 5 days 4 hours 3 mins 2.100 secs",
+        "0 years 0 mons 15 days 0 hours 0 mins 0.00 secs",
+        "0 years 1 mons 0 days 0 hours 0 mins 0.00 secs",
+        "0 years 5 mons 0 days 0 hours 0 mins 0.00 secs",
+        "1 years 1 mons 0 days 0 hours 0 mins 0.00 secs",
+        "0 years 6 mons 0 days 0 hours 0 mins 0.00 secs",
+        "1 years 0 mons 0 days 0 hours 0 mins 0.00 secs",
+        "2 years 0 mons 0 days 0 hours 0 mins 0.00 secs",
+    ]];
+    assert_eq!(expected, actual);
+    Ok(())
+}
+
+#[tokio::test]
+async fn crypto_expressions() -> Result<()> {
+    let mut ctx = ExecutionContext::new();
+    let sql = "SELECT
+        md5('tom') AS md5_tom,
+        md5('') AS md5_empty_str,
+        md5(null) AS md5_null,
+        sha224('tom') AS sha224_tom,
+        sha224('') AS sha224_empty_str,
+        sha224(null) AS sha224_null,
+        sha256('tom') AS sha256_tom,
+        sha256('') AS sha256_empty_str,
+        sha384('tom') AS sha348_tom,
+        sha384('') AS sha384_empty_str,
+        sha512('tom') AS sha512_tom,
+        sha512('') AS sha512_empty_str
+    ";
+    let actual = execute(&mut ctx, sql).await;
+
+    let expected = vec![vec![
+        "34b7da764b21d298ef307d04d8152dc5",
+        "d41d8cd98f00b204e9800998ecf8427e",
+        "NULL",
+        "0bf6cb62649c42a9ae3876ab6f6d92ad36cb5414e495f8873292be4d",
+        "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f",
+        "NULL",
+        "e1608f75c5d7813f3d4031cb30bfb786507d98137538ff8e128a6ff74e84e643",
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "096f5b68aa77848e4fdf5c1c0b350de2dbfad60ffd7c25d9ea07c6c19b8a4d55a9187eb117c557883f58c16dfac3e343",
+        "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+        "6e1b9b3fe840680e37051f7ad5e959d6f39ad0f8885d855166f55c659469d3c8b78118c44a2a49c72ddb481cd6d8731034e11cc030070ba843a90b3495cb8d3e",
+        "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
     ]];
     assert_eq!(expected, actual);
     Ok(())
