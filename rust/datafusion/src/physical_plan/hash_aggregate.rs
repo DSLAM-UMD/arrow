@@ -1276,13 +1276,21 @@ mod tests {
 
     /// Define a test source that can yield back to runtime before returning its first item ///
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     struct TestYieldingExec {
         /// True if this exec should yield back to runtime the first time it is polled
         pub yield_first: bool,
     }
 
     #[async_trait]
+    impl LambdaExecPlan for TestYieldingExec {
+        fn feed_batches(&mut self, _: Vec<Vec<RecordBatch>>) {
+            unimplemented!();
+        }
+    }    
+
+    #[async_trait]
+    #[typetag::serde(name = "test_yield_exec")]
     impl ExecutionPlan for TestYieldingExec {
         fn as_any(&self) -> &dyn Any {
             self

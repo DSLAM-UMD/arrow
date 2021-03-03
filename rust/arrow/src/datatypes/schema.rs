@@ -34,7 +34,7 @@ use super::Field;
 pub struct Schema {
     pub(crate) fields: Vec<Field>,
     /// A map of key-value pairs containing additional meta data.
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    // #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub(crate) metadata: HashMap<String, String>,
 }
 

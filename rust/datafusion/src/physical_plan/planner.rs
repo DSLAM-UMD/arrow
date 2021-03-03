@@ -40,15 +40,18 @@ use crate::physical_plan::sort::SortExec;
 // use crate::physical_plan::udf;
 use crate::physical_plan::{expressions, Distribution};
 use crate::physical_plan::{hash_utils, Partitioning};
-use crate::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr, PhysicalPlanner};
+use crate::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr, PhysicalPlanner, LambdaExecPlan};
 use crate::prelude::JoinType;
 use crate::scalar::ScalarValue;
 use crate::variable::VarType;
 use arrow::compute::can_cast_types;
 
+use arrow::record_batch::RecordBatch;
 use arrow::compute::SortOptions;
 use arrow::datatypes::{Schema, SchemaRef};
 use expressions::col;
+
+use serde::{Deserialize, Serialize};
 
 /// This trait exposes the ability to plan an [`ExecutionPlan`] out of a [`LogicalPlan`].
 pub trait ExtensionPlanner {
@@ -1048,12 +1051,20 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     struct NoOpExecutionPlan {
         schema: SchemaRef,
     }
 
     #[async_trait]
+    impl LambdaExecPlan for NoOpExecutionPlan {
+        fn feed_batches(&mut self, _: Vec<Vec<RecordBatch>>) {
+            unimplemented!();
+        }
+    }
+
+    #[async_trait]
+    #[typetag::serde(name = "no_op_execution_plan")]
     impl ExecutionPlan for NoOpExecutionPlan {
         /// Return a reference to Any that can be used for downcasting
         fn as_any(&self) -> &dyn Any {
