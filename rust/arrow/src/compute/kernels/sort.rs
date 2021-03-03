@@ -256,6 +256,7 @@ impl Default for SortOptions {
 }
 
 /// Sort primitive values
+#[allow(clippy::unnecessary_wraps)]
 fn sort_boolean(
     values: &ArrayRef,
     value_indices: Vec<u32>,
@@ -318,6 +319,7 @@ fn sort_boolean(
 }
 
 /// Sort primitive values
+#[allow(clippy::unnecessary_wraps)]
 fn sort_primitive<T, F>(
     values: &ArrayRef,
     value_indices: Vec<u32>,
@@ -448,6 +450,7 @@ fn sort_string_dictionary<T: ArrowDictionaryKeyType>(
 
 /// shared implementation between dictionary encoded and plain string arrays
 #[inline]
+#[allow(clippy::unnecessary_wraps)]
 fn sort_string_helper<'a, A: Array, F>(
     values: &'a A,
     value_indices: Vec<u32>,
@@ -483,6 +486,7 @@ where
     Ok(UInt32Array::from(valid_indices))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn sort_list<S, T>(
     values: &ArrayRef,
     value_indices: Vec<u32>,

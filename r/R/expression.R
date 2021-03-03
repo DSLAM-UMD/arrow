@@ -51,8 +51,8 @@ Ops.array_expression <- function(e1, e2) {
 }
 
 build_array_expression <- function(.Generic, e1, e2, ...) {
-  if (.Generic %in% names(.unary_function_map)) {
-    expr <- array_expression(.unary_function_map[[.Generic]], e1)
+  if (.Generic %in% names(.unary_function_map) || nargs() == 2L) {
+    expr <- array_expression(.unary_function_map[[.Generic]] %||% .Generic, e1)
   } else {
     e1 <- .wrap_arrow(e1, .Generic)
     e2 <- .wrap_arrow(e2, .Generic)
@@ -79,7 +79,7 @@ build_array_expression <- function(.Generic, e1, e2, ...) {
       return(build_array_expression("-", e1, base))
     }
 
-    expr <- array_expression(.binary_function_map[[.Generic]], e1, e2, ...)
+    expr <- array_expression(.binary_function_map[[.Generic]] %||% .Generic, e1, e2, ...)
   }
   expr
 }
@@ -110,7 +110,14 @@ cast_array_expression <- function(x, to_type, safe = TRUE, ...) {
 .unary_function_map <- list(
   "!" = "invert",
   "is.na" = "is_null",
-  "is.nan" = "is_nan"
+  "is.nan" = "is_nan",
+  "nchar" = "binary_length",
+  "tolower" = "utf8_lower",
+  "toupper" = "utf8_upper",
+  # stringr spellings of those
+  "str_length" = "binary_length",
+  "str_to_lower" = "utf8_lower",
+  "str_to_upper" = "utf8_upper"
 )
 
 .binary_function_map <- list(
@@ -136,7 +143,14 @@ cast_array_expression <- function(x, to_type, safe = TRUE, ...) {
 
 .array_function_map <- c(.unary_function_map, .binary_function_map)
 
-eval_array_expression <- function(x) {
+eval_array_expression <- function(x, data = NULL) {
+  if (!is.null(data)) {
+    x <- bind_array_refs(x, data)
+  }
+  if (!inherits(x, "array_expression")) {
+    # Nothing to evaluate
+    return(x)
+  }
   x$args <- lapply(x$args, function (a) {
     if (inherits(a, "array_expression")) {
       eval_array_expression(a)
@@ -144,17 +158,28 @@ eval_array_expression <- function(x) {
       a
     }
   })
-  if (length(x$args) == 2L) {
-    # Insert implicit casts
-    if (inherits(x$args[[1]], "Scalar")) {
-      x$args[[1]] <- x$args[[1]]$cast(x$args[[2]]$type)
-    } else if (inherits(x$args[[2]], "Scalar")) {
-      x$args[[2]] <- x$args[[2]]$cast(x$args[[1]]$type)
-    } else if (x$fun == "is_in_meta_binary" && inherits(x$args[[2]], "Array")) {
-      x$args[[2]] <- x$args[[2]]$cast(x$args[[1]]$type)
+  call_function(x$fun, args = x$args, options = x$options %||% empty_named_list())
+}
+
+find_array_refs <- function(x) {
+  if (identical(x$fun, "array_ref")) {
+    out <- x$args$field_name
+  } else {
+    out <- lapply(x$args, find_array_refs)
+  }
+  unlist(out)
+}
+
+# Take an array_expression and replace array_refs with arrays/chunkedarrays from data
+bind_array_refs <- function(x, data) {
+  if (inherits(x, "array_expression")) {
+    if (identical(x$fun, "array_ref")) {
+      x <- data[[x$args$field_name]]
+    } else {
+      x$args <- lapply(x$args, bind_array_refs, data)
     }
   }
-  call_function(x$fun, args = x$args, options = x$options %||% empty_named_list())
+  x
 }
 
 #' @export
@@ -184,9 +209,13 @@ print.array_expression <- function(x, ...) {
       deparse(arg)
     }
   })
-  # Prune this for readability
-  function_name <- sub("_kleene", "", x$fun)
-  paste0(function_name, "(", paste(printed_args, collapse = ", "), ")")
+  if (identical(x$fun, "array_ref")) {
+    x$args$field_name
+  } else {
+    # Prune this for readability
+    function_name <- sub("_kleene", "", x$fun)
+    paste0(function_name, "(", paste(printed_args, collapse = ", "), ")")
+  }
 }
 
 ###########
@@ -220,6 +249,9 @@ Expression <- R6Class("Expression", inherit = ArrowObject,
       )
       Expression$create("cast", self, options = modifyList(opts, list(...)))
     }
+  ),
+  active = list(
+    field_name = function() dataset___expr__get_field_ref_name(self)
   )
 )
 Expression$create <- function(function_name,
@@ -238,8 +270,8 @@ Expression$scalar <- function(x) {
 }
 
 build_dataset_expression <- function(.Generic, e1, e2, ...) {
-  if (.Generic %in% names(.unary_function_map)) {
-    expr <- Expression$create(.unary_function_map[[.Generic]], e1)
+  if (.Generic %in% names(.unary_function_map) || nargs() == 2L) {
+    expr <- Expression$create(.unary_function_map[[.Generic]] %||% .Generic, e1)
   } else if (.Generic == "%in%") {
     # Special-case %in%, which is different from the Array function name
     expr <- Expression$create("is_in", e1,
@@ -270,7 +302,7 @@ build_dataset_expression <- function(.Generic, e1, e2, ...) {
       return(e1 - e2 * ( e1 %/% e2 ))
     }
 
-    expr <- Expression$create(.binary_function_map[[.Generic]], e1, e2, ...)
+    expr <- Expression$create(.binary_function_map[[.Generic]] %||% .Generic, e1, e2, ...)
   }
   expr
 }

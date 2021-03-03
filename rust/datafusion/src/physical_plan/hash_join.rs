@@ -270,7 +270,7 @@ impl ExecutionPlan for HashJoinExec {
                     // Merge all batches into a single batch, so we
                     // can directly index into the arrays
                     let single_batch =
-                        concat_batches(&batches[0].schema(), &batches, num_rows)?;
+                        concat_batches(&self.left.schema(), &batches, num_rows)?;
 
                     let left_side = Arc::new((hashmap, single_batch));
 
@@ -715,7 +715,10 @@ macro_rules! hash_array {
 }
 
 /// Creates hash values for every element in the row based on the values in the columns
-fn create_hashes(arrays: &[ArrayRef], random_state: &RandomState) -> Result<Vec<u64>> {
+pub fn create_hashes(
+    arrays: &[ArrayRef],
+    random_state: &RandomState,
+) -> Result<Vec<u64>> {
     let rows = arrays[0].len();
     let mut hashes = vec![0; rows];
 

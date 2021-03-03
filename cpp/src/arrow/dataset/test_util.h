@@ -33,6 +33,7 @@
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/discovery.h"
 #include "arrow/dataset/file_base.h"
+#include "arrow/dataset/scanner_internal.h"
 #include "arrow/filesystem/localfs.h"
 #include "arrow/filesystem/mockfs.h"
 #include "arrow/filesystem/path_util.h"
@@ -50,16 +51,19 @@ namespace arrow {
 namespace dataset {
 
 const std::shared_ptr<Schema> kBoringSchema = schema({
+    field("bool", boolean()),
+    field("i8", int8()),
     field("i32", int32()),
     field("i32_req", int32(), /*nullable=*/false),
+    field("u32", uint32()),
     field("i64", int64()),
-    field("date64", date64()),
     field("f32", float32()),
     field("f32_req", float32(), /*nullable=*/false),
     field("f64", float64()),
-    field("bool", boolean()),
+    field("date64", date64()),
     field("str", utf8()),
     field("dict_str", dictionary(int32(), utf8())),
+    field("dict_i32", dictionary(int32(), int32())),
     field("ts_ns", timestamp(TimeUnit::NANO)),
 });
 
@@ -197,7 +201,9 @@ class DatasetFixtureMixin : public ::testing::Test {
  protected:
   void SetSchema(std::vector<std::shared_ptr<Field>> fields) {
     schema_ = schema(std::move(fields));
-    options_ = ScanOptions::Make(schema_);
+    options_ = std::make_shared<ScanOptions>();
+    options_->dataset_schema = schema_;
+    ASSERT_OK(SetProjection(options_.get(), schema_->field_names()));
     SetFilter(literal(true));
   }
 
@@ -369,7 +375,7 @@ struct MakeFileSystemDatasetMixin {
 
   std::shared_ptr<fs::FileSystem> fs_;
   std::shared_ptr<Dataset> dataset_;
-  std::shared_ptr<ScanOptions> options_ = ScanOptions::Make(schema({}));
+  std::shared_ptr<ScanOptions> options_;
 };
 
 static const std::string& PathOf(const std::shared_ptr<Fragment>& fragment) {
@@ -565,7 +571,9 @@ class WriteFileSystemDatasetMixin : public MakeFileSystemDatasetMixin {
                          FileSystemDatasetFactory::Make(fs_, s, source_format, options));
     ASSERT_OK_AND_ASSIGN(dataset_, factory->Finish());
 
-    scan_options_ = ScanOptions::Make(source_schema_);
+    scan_options_ = std::make_shared<ScanOptions>();
+    scan_options_->dataset_schema = source_schema_;
+    ASSERT_OK(SetProjection(scan_options_.get(), source_schema_->field_names()));
   }
 
   void SetWriteOptions(std::shared_ptr<FileWriteOptions> file_write_options) {

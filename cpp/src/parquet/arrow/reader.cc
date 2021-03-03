@@ -30,6 +30,7 @@
 #include "arrow/record_batch.h"
 #include "arrow/table.h"
 #include "arrow/type.h"
+#include "arrow/util/bit_util.h"
 #include "arrow/util/iterator.h"
 #include "arrow/util/logging.h"
 #include "arrow/util/make_unique.h"
@@ -68,6 +69,8 @@ using arrow::internal::Iota;
 using ParquetReader = parquet::ParquetFileReader;
 
 using parquet::internal::RecordReader;
+
+namespace BitUtil = arrow::BitUtil;
 
 namespace parquet {
 namespace arrow {
@@ -887,7 +890,7 @@ Status FileReaderImpl::GetRecordBatchReader(const std::vector<int>& row_groups,
   if (reader_properties_.pre_buffer()) {
     // PARQUET-1698/PARQUET-1820: pre-buffer row groups/column chunks if enabled
     BEGIN_PARQUET_CATCH_EXCEPTIONS
-    reader_->PreBuffer(row_groups, column_indices, reader_properties_.async_context(),
+    reader_->PreBuffer(row_groups, column_indices, reader_properties_.io_context(),
                        reader_properties_.cache_options());
     END_PARQUET_CATCH_EXCEPTIONS
   }
@@ -987,7 +990,7 @@ Status FileReaderImpl::ReadRowGroups(const std::vector<int>& row_groups,
   if (reader_properties_.pre_buffer()) {
     BEGIN_PARQUET_CATCH_EXCEPTIONS
     parquet_reader()->PreBuffer(row_groups, column_indices,
-                                reader_properties_.async_context(),
+                                reader_properties_.io_context(),
                                 reader_properties_.cache_options());
     END_PARQUET_CATCH_EXCEPTIONS
   }

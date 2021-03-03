@@ -146,10 +146,10 @@ impl OptimizerRule for HashBuildProbeOrder {
             | LogicalPlan::CreateExternalTable { .. }
             | LogicalPlan::Explain { .. }
             | LogicalPlan::Extension { .. } => {
-                let expr = utils::expressions(plan);
+                let expr = plan.expressions();
 
                 // apply the optimization to all inputs of the plan
-                let inputs = utils::inputs(plan);
+                let inputs = plan.inputs();
                 let new_inputs = inputs
                     .iter()
                     .map(|plan| self.optimize(plan))
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn test_swap_order() -> Result<()> {
+    fn test_swap_order() {
         let lp_left = LogicalPlan::TableScan {
             table_name: "left".to_string(),
             projection: None,
@@ -245,7 +245,5 @@ mod tests {
 
         assert!(should_swap_join_order(&lp_left, &lp_right));
         assert!(!should_swap_join_order(&lp_right, &lp_left));
-
-        Ok(())
     }
 }

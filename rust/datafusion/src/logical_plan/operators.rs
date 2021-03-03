@@ -113,11 +113,10 @@ impl ops::Div for Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Result;
     use crate::prelude::lit;
 
     #[test]
-    fn test_operators() -> Result<()> {
+    fn test_operators() {
         assert_eq!(
             format!("{:?}", lit(1u32) + lit(2u32)),
             "UInt32(1) Plus UInt32(2)"
@@ -134,7 +133,5 @@ mod tests {
             format!("{:?}", lit(1u32) / lit(2u32)),
             "UInt32(1) Divide UInt32(2)"
         );
-
-        Ok(())
     }
 }

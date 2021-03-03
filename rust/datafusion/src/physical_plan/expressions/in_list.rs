@@ -131,6 +131,7 @@ impl InListExpr {
     }
 
     /// Compare for specific utf8 types
+    #[allow(clippy::unnecessary_wraps)]
     fn compare_utf8<T: StringOffsetSizeTrait>(
         &self,
         array: ArrayRef,
