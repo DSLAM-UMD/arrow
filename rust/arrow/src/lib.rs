@@ -140,7 +140,7 @@ mod arch;
 pub mod array;
 pub mod bitmap;
 pub mod buffer;
-mod bytes;
+pub mod bytes;
 pub mod compute;
 pub mod csv;
 pub mod datatypes;
