@@ -43,10 +43,10 @@ use super::Buffer;
 #[derive(Debug)]
 pub struct MutableBuffer {
     // dangling iff capacity = 0
-    data: NonNull<u8>,
+    pub data: NonNull<u8>,
     // invariant: len <= capacity
-    len: usize,
-    capacity: usize,
+    pub len: usize,
+    pub capacity: usize,
 }
 
 impl MutableBuffer {
