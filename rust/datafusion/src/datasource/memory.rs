@@ -158,6 +158,11 @@ impl MemTable {
         }
         MemTable::try_new(schema.clone(), data)
     }
+
+    /// Get batches from MemTable.
+    pub fn batches(&mut self) -> Vec<Vec<RecordBatch>> {
+        std::mem::replace(&mut self.batches, Vec::new())
+    }
 }
 
 impl TableProvider for MemTable {
