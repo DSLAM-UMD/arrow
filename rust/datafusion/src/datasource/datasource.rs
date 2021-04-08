@@ -68,6 +68,9 @@ pub trait TableProvider {
     /// downcast to a specific implementation.
     fn as_any(&self) -> &dyn Any;
 
+    /// Return the value as an mutable Any to allow for downcasts without transmutation
+    fn as_mut_any(&mut self) -> &mut dyn Any;
+
     /// Get a reference to the schema for this table
     fn schema(&self) -> SchemaRef;
 

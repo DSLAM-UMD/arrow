@@ -955,6 +955,10 @@ mod tests {
             self
         }
 
+        fn as_mut_any(&mut self) -> &mut dyn Any {
+            self
+        }
+
         fn statistics(&self) -> Statistics {
             Statistics::default()
         }
