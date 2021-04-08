@@ -42,9 +42,9 @@ use super::datasource::ColumnStatistics;
 
 /// In-memory table
 pub struct MemTable {
-    schema: SchemaRef,
-    batches: Vec<Vec<RecordBatch>>,
-    statistics: Statistics,
+    pub schema: SchemaRef,
+    pub batches: Vec<Vec<RecordBatch>>,
+    pub statistics: Statistics,
 }
 
 // Calculates statistics based on partitions
