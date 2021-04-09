@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{any::Any, vec};
+use std::collections::HashMap;
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ExecutionPlan, Partitioning};
@@ -148,6 +149,55 @@ impl ExecutionPlan for RepartitionExec {
                                 tx.send(Some(result)).map_err(|e| {
                                     DataFusionError::Execution(e.to_string())
                                 })?;
+                            }
+                            Partitioning::HashDiff(exprs, _) => {
+                                let input_batch = result?;
+                                let arrays = exprs
+                                    .iter()
+                                    .map(|expr| {
+                                        Ok(expr
+                                            .evaluate(&input_batch)?
+                                            .into_array(input_batch.num_rows()))
+                                    })
+                                    .collect::<Result<Vec<_>>>()?;
+                                // Hash arrays and compute buckets based on number of partitions
+                                let hashes = create_hashes(&arrays, &random_state)?;
+                                let mut indices = HashMap::new();
+                                // let mut indices = vec![vec![]; num_output_partitions];
+                                for (index, hash) in hashes.iter().enumerate() {
+                                    if indices.get(&hash).is_none() {
+                                        indices.insert(hash, vec![index as u64]);
+                                    } else {
+                                        indices.get_mut(&hash).unwrap().push(index as u64);
+                                    }
+                                }
+                                for (num_output_partition, (_, partition_indices)) in
+                                    indices.into_iter().enumerate()
+                                {
+                                    let indices = partition_indices.into();
+                                    // Produce batches based on indices
+                                    let columns = input_batch
+                                        .columns()
+                                        .iter()
+                                        .map(|c| {
+                                            take(c.as_ref(), &indices, None).map_err(
+                                                |e| {
+                                                    DataFusionError::Execution(
+                                                        e.to_string(),
+                                                    )
+                                                },
+                                            )
+                                        })
+                                        .collect::<Result<Vec<Arc<dyn Array>>>>()?;
+                                    let output_batch = RecordBatch::try_new(
+                                        input_batch.schema(),
+                                        columns,
+                                    );
+                                    let tx = &mut channels[num_output_partition].0;
+                                    tx.send(Some(output_batch)).map_err(|e| {
+                                        DataFusionError::Execution(e.to_string())
+                                    })?;
+                                }                                   
                             }
                             Partitioning::Hash(exprs, _) => {
                                 let input_batch = result?;

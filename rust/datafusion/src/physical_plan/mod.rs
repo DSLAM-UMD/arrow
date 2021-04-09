@@ -144,6 +144,8 @@ pub enum Partitioning {
     /// number of partitions
     /// This partitioning scheme is not yet fully supported. See [ARROW-11011](https://issues.apache.org/jira/browse/ARROW-11011)
     Hash(Vec<Arc<dyn PhysicalExpr>>, usize),
+    /// Use to handle `Partition By` clause.
+    HashDiff(Vec<Arc<dyn PhysicalExpr>>, usize),
     /// Unknown partitioning scheme with a known number of partitions
     UnknownPartitioning(usize),
 }
@@ -155,6 +157,7 @@ impl Partitioning {
         match self {
             RoundRobinBatch(n) => *n,
             Hash(_, n) => *n,
+            HashDiff(_, n) => *n,
             UnknownPartitioning(n) => *n,
         }
     }
