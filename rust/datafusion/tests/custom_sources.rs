@@ -29,7 +29,7 @@ use datafusion::{
 use datafusion::execution::context::ExecutionContext;
 use datafusion::logical_plan::{col, Expr, LogicalPlan, LogicalPlanBuilder};
 use datafusion::physical_plan::{
-    ExecutionPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream,
+    ExecutionPlan, LambdaExecPlan, Partitioning, RecordBatchStream, SendableRecordBatchStream,
 };
 
 use futures::stream::Stream;
@@ -38,12 +38,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use serde::{Deserialize, Serialize};
+
 use async_trait::async_trait;
 
 //// Custom source dataframe tests ////
 
 struct CustomTableProvider;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CustomExecutionPlan {
     projection: Option<Vec<usize>>,
 }
@@ -94,6 +96,14 @@ impl Stream for TestCustomRecordBatchStream {
 }
 
 #[async_trait]
+impl LambdaExecPlan for CustomExecutionPlan {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
+    }
+}
+
+#[async_trait]
+#[typetag::serde(name = "custom_execution_plan")]
 impl ExecutionPlan for CustomExecutionPlan {
     fn as_any(&self) -> &dyn Any {
         self

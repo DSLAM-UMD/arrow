@@ -76,7 +76,7 @@ use datafusion::{
     physical_plan::{
         planner::{DefaultPhysicalPlanner, ExtensionPlanner},
         Distribution, ExecutionPlan, Partitioning, PhysicalPlanner, RecordBatchStream,
-        SendableRecordBatchStream,
+        SendableRecordBatchStream, LambdaExecPlan,
     },
     prelude::{ExecutionConfig, ExecutionContext},
 };
@@ -337,6 +337,13 @@ struct TopKExec {
 impl Debug for TopKExec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TopKExec")
+    }
+}
+
+#[async_trait]
+impl LambdaExecPlan for TopKExec {
+    fn feed_batches(&mut self, _partitions: Vec<Vec<RecordBatch>>) {
+        unimplemented!();
     }
 }
 

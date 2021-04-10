@@ -18,7 +18,7 @@
 #[cfg(feature = "simd")]
 use packed_simd::*;
 #[cfg(feature = "simd")]
-use std::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Div, Mul, Neg, Not, Sub};
+use std::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Div, Mul, Rem, Neg, Not, Sub};
 
 use super::*;
 
@@ -32,6 +32,7 @@ where
         + Sub<Output = Self::Simd>
         + Mul<Output = Self::Simd>
         + Div<Output = Self::Simd>
+        + Rem<Output = Self::Simd>
         + Copy,
     Self::SimdMask: BitAnd<Output = Self::SimdMask>
         + BitOr<Output = Self::SimdMask>
